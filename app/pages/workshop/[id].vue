@@ -22,11 +22,6 @@ useHead({ title: () => `${data.value?.item.title ?? '作品'} · 创意工坊` }
 
     <p class="mt-6 whitespace-pre-line">{{ data.item.description }}</p>
 
-    <!-- 服务端解析 NBT 返回紧凑二进制，原始文件不出站 -->
-    <div class="mt-8">
-      <NbtViewer :workshop-id="data.item.id" />
-    </div>
-
     <section v-if="data.item.files.length" class="mt-8">
       <h2 class="mb-2 text-sm font-semibold">包含文件</h2>
       <ul class="space-y-1 text-sm text-(--ui-text-muted)">

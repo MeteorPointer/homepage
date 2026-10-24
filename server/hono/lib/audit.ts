@@ -44,5 +44,10 @@ export const AUDIT = {
   WORKSHOP_REVIEW: 'workshop.review',
   CHANGELOG_CREATE: 'changelog.create',
   CHANGELOG_DELETE: 'changelog.delete',
+  EXTERNAL_MOD_CREATE: 'external-mod.create',
+  EXTERNAL_MOD_UPDATE: 'external-mod.update',
+  EXTERNAL_MOD_DELETE: 'external-mod.delete',
+  DEVELOPER_UPSERT: 'developer.upsert',
+  DEVELOPER_DELETE: 'developer.delete',
   SITE_CONFIG_UPDATE: 'site.config.update',
 } as const

@@ -1,21 +1,29 @@
 <script setup lang="ts">
 useHead({ title: '后台 · NSUK' })
 
-const { user, level } = useAuth()
+const { user } = useAuth()
 
-// 前端只做体验上的隐藏，真正的权限判定在每个接口的 requireCap 里
-const allowed = computed(() => level.value >= 2)
+function hasPerm(cap: string) {
+  const permissions = user.value?.permissions ?? []
+  return permissions.includes('*') || permissions.includes(cap)
+}
+
+const allTabs = [
+  { key: 'feedback', label: '反馈', cap: 'feedback.manage' },
+  { key: 'workshop', label: '工坊审核', cap: 'workshop.review' },
+  { key: 'mods', label: '特色模组', cap: 'mods.manage' },
+  { key: 'developers', label: '开发者资料', cap: 'developers.manage' },
+  { key: 'audit', label: '审计', cap: 'audit.view' },
+]
+const tabs = computed(() => allTabs.filter((tab) => hasPerm(tab.cap)))
+const allowed = computed(() => tabs.value.length > 0)
+const canViewStats = computed(() => hasPerm('audit.view'))
 
 const { data: stats } = await useFetch<{
   stats: { pendingWorkshop: number; openFeedback: number; users: number; licenseTtlHours: number }
-}>('/api/admin/stats', { server: false, immediate: allowed.value })
+}>('/api/admin/stats', { server: false, immediate: canViewStats.value })
 
-const tabs = [
-  { key: 'feedback', label: '反馈' },
-  { key: 'workshop', label: '工坊审核' },
-  { key: 'audit', label: '审计' },
-]
-const active = ref('feedback')
+const active = ref(tabs.value[0]?.key ?? '')
 </script>
 
 <template>
@@ -26,11 +34,11 @@ const active = ref('feedback')
       v-if="!user || !allowed"
       class="mt-8 rounded-(--ui-radius) border border-dashed border-(--ui-border) p-8 text-sm text-(--ui-text-dimmed)"
     >
-      需要客服及以上权限。
+      需要后台权限。若你刚获得权限，请重新登录后再试。
     </div>
 
     <template v-else>
-      <div class="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div v-if="canViewStats" class="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <div class="rounded-(--ui-radius) border border-(--ui-border) p-4">
           <p class="text-xs text-(--ui-text-dimmed)">待审作品</p>
           <p class="mt-1 text-2xl font-semibold">{{ stats?.stats.pendingWorkshop ?? '—' }}</p>
@@ -68,6 +76,8 @@ const active = ref('feedback')
       <div class="mt-6">
         <AdminFeedbackTab v-if="active === 'feedback'" />
         <AdminWorkshopTab v-else-if="active === 'workshop'" />
+        <AdminModsTab v-else-if="active === 'mods'" />
+        <AdminDevelopersTab v-else-if="active === 'developers'" />
         <AdminAuditTab v-else-if="active === 'audit'" />
       </div>
 

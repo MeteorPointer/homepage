@@ -9,8 +9,83 @@ import { requireCap } from '../lib/rbac'
 import { CAPS } from '../lib/roles'
 import { getConfig, nowIso, parseJson, parsePaging } from '../lib/db'
 import { AUDIT, recordAudit } from '../lib/audit'
+import type { Developer, ExternalMod } from '../../../shared/types'
 
 const r = new Hono<AppBindings>()
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value)
+}
+
+function readText(value: unknown, max: number): string {
+  return typeof value === 'string' ? value.trim().slice(0, max) : ''
+}
+
+/** 运营内容中的站外资源只接受 HTTPS，避免把 javascript: 等协议交给前端。 */
+function readHttpsUrl(value: unknown): string | null {
+  const url = readText(value, 2048)
+  if (!url) return ''
+  try {
+    return new URL(url).protocol === 'https:' ? url : null
+  } catch {
+    return null
+  }
+}
+
+function readImageUrl(value: unknown): string | null {
+  const url = readText(value, 2048)
+  if (url.startsWith('/uploads/developers/')) return url
+  return readHttpsUrl(url)
+}
+
+function parseExternalMod(value: unknown): { data?: Omit<ExternalMod, 'id'>; error?: string } {
+  if (!isRecord(value)) return { error: '请求体必须是 JSON 对象' }
+  const name = readText(value.name, 120)
+  const description = readText(value.description, 1000)
+  const url = readHttpsUrl(value.url)
+  const author = readText(value.author, 120)
+  const icon = readImageUrl(value.icon)
+  if (!name) return { error: '名称不能为空' }
+  if (!url) return { error: '链接必须是有效的 HTTPS 地址' }
+  if (icon === null) return { error: '图标必须是有效的 HTTPS 地址或本站开发者图片路径' }
+  return {
+    data: { name, description, url, ...(author ? { author } : {}), ...(icon ? { icon } : {}) },
+  }
+}
+
+function parseDeveloper(value: unknown): { data?: Omit<Developer, 'slug'>; error?: string } {
+  if (!isRecord(value)) return { error: '请求体必须是 JSON 对象' }
+  const name = readText(value.name, 120)
+  const role = readText(value.role, 120)
+  const avatar = readImageUrl(value.avatar)
+  const intro = readText(value.intro, 1000)
+  const cover = readImageUrl(value.cover)
+  const body = readText(value.body, 8000)
+  const rawLinks = value.links
+  if (!name) return { error: '名称不能为空' }
+  if (avatar === null || cover === null) return { error: '头像和封面必须是有效的 HTTPS 地址或本站开发者图片路径' }
+  if (rawLinks !== undefined && !Array.isArray(rawLinks)) return { error: 'links 必须是数组' }
+  if (Array.isArray(rawLinks) && rawLinks.length > 12) return { error: '链接最多 12 条' }
+  const links: { label: string; url: string }[] = []
+  for (const link of rawLinks ?? []) {
+    if (!isRecord(link)) return { error: '链接格式无效' }
+    const label = readText(link.label, 80)
+    const url = readHttpsUrl(link.url)
+    if (!label || !url) return { error: '每条链接都需要名称和有效的 HTTPS 地址' }
+    links.push({ label, url })
+  }
+  return {
+    data: {
+      name,
+      role,
+      avatar: avatar ?? '',
+      intro,
+      ...(cover ? { cover } : {}),
+      ...(links.length ? { links } : {}),
+      ...(body ? { body } : {}),
+    },
+  }
+}
 
 // ─────────────────────────────────────────────────────────────
 // 反馈处理
@@ -257,6 +332,93 @@ r.delete('/changelog/:id', requireCap(CAPS.CHANGELOG_MANAGE), async (c) => {
 })
 
 // ─────────────────────────────────────────────────────────────
+// 首页特色模组与开发者资料
+// ─────────────────────────────────────────────────────────────
+
+r.get('/external-mods', requireCap(CAPS.MODS_MANAGE), async (c) => {
+  const { results } = await c.env.DB.prepare('SELECT id, data FROM external_mods ORDER BY id').all<{
+    id: string
+    data: string
+  }>()
+  const mods = results.flatMap((row) => {
+    const parsed = parseExternalMod(parseJson<unknown>(row.data, null, `external_mods.${row.id}`))
+    return parsed.data ? [{ id: row.id, ...parsed.data }] : []
+  })
+  return c.json({ ok: true, mods })
+})
+
+r.post('/external-mods', requireCap(CAPS.MODS_MANAGE), async (c) => {
+  const user = c.get('user')!
+  const parsed = parseExternalMod(await c.req.json<unknown>().catch(() => null))
+  if (!parsed.data) return c.json({ ok: false, error: parsed.error }, 400)
+  const id = crypto.randomUUID()
+  await c.env.DB.prepare('INSERT INTO external_mods (id, data) VALUES (?, ?)')
+    .bind(id, JSON.stringify(parsed.data))
+    .run()
+  await recordAudit(c.env.DB, { actor: user.sub, action: AUDIT.EXTERNAL_MOD_CREATE, target: id, detail: { name: parsed.data.name } })
+  return c.json({ ok: true, id }, 201)
+})
+
+r.put('/external-mods/:id', requireCap(CAPS.MODS_MANAGE), async (c) => {
+  const user = c.get('user')!
+  const id = c.req.param('id') ?? ''
+  const parsed = parseExternalMod(await c.req.json<unknown>().catch(() => null))
+  if (!parsed.data) return c.json({ ok: false, error: parsed.error }, 400)
+  const result = await c.env.DB.prepare('UPDATE external_mods SET data = ? WHERE id = ?')
+    .bind(JSON.stringify(parsed.data), id)
+    .run()
+  if (!result.meta.changes) return c.json({ ok: false, error: '特色模组不存在' }, 404)
+  await recordAudit(c.env.DB, { actor: user.sub, action: AUDIT.EXTERNAL_MOD_UPDATE, target: id, detail: { name: parsed.data.name } })
+  return c.json({ ok: true })
+})
+
+r.delete('/external-mods/:id', requireCap(CAPS.MODS_MANAGE), async (c) => {
+  const user = c.get('user')!
+  const id = c.req.param('id') ?? ''
+  const result = await c.env.DB.prepare('DELETE FROM external_mods WHERE id = ?').bind(id).run()
+  if (!result.meta.changes) return c.json({ ok: false, error: '特色模组不存在' }, 404)
+  await recordAudit(c.env.DB, { actor: user.sub, action: AUDIT.EXTERNAL_MOD_DELETE, target: id })
+  return c.json({ ok: true })
+})
+
+r.get('/developers', requireCap(CAPS.DEVELOPERS_MANAGE), async (c) => {
+  const { results } = await c.env.DB.prepare('SELECT slug, data FROM developers ORDER BY slug').all<{
+    slug: string
+    data: string
+  }>()
+  const developers = results.flatMap((row) => {
+    const parsed = parseDeveloper(parseJson<unknown>(row.data, null, `developers.${row.slug}`))
+    return parsed.data ? [{ slug: row.slug, ...parsed.data }] : []
+  })
+  return c.json({ ok: true, developers })
+})
+
+r.put('/developers/:slug', requireCap(CAPS.DEVELOPERS_MANAGE), async (c) => {
+  const user = c.get('user')!
+  const slug = (c.req.param('slug') ?? '').trim().toLowerCase()
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug) || slug.length > 64) {
+    return c.json({ ok: false, error: 'slug 只能包含小写字母、数字和连字符，且不能以连字符开头或结尾' }, 400)
+  }
+  const parsed = parseDeveloper(await c.req.json<unknown>().catch(() => null))
+  if (!parsed.data) return c.json({ ok: false, error: parsed.error }, 400)
+  await c.env.DB.prepare(
+    `INSERT INTO developers (slug, data) VALUES (?, ?)
+     ON CONFLICT(slug) DO UPDATE SET data = excluded.data`,
+  ).bind(slug, JSON.stringify(parsed.data)).run()
+  await recordAudit(c.env.DB, { actor: user.sub, action: AUDIT.DEVELOPER_UPSERT, target: slug, detail: { name: parsed.data.name } })
+  return c.json({ ok: true, slug })
+})
+
+r.delete('/developers/:slug', requireCap(CAPS.DEVELOPERS_MANAGE), async (c) => {
+  const user = c.get('user')!
+  const slug = c.req.param('slug') ?? ''
+  const result = await c.env.DB.prepare('DELETE FROM developers WHERE slug = ?').bind(slug).run()
+  if (!result.meta.changes) return c.json({ ok: false, error: '开发者不存在' }, 404)
+  await recordAudit(c.env.DB, { actor: user.sub, action: AUDIT.DEVELOPER_DELETE, target: slug })
+  return c.json({ ok: true })
+})
+
+// ─────────────────────────────────────────────────────────────
 // 站点配置（公告等运行期可调参数）
 // ─────────────────────────────────────────────────────────────
 
@@ -267,6 +429,36 @@ const EDITABLE_CONFIG = new Set([
   'rebind_cooldown_hours',
   'offline_grace_days',
 ])
+
+/** 防止后台误填负数或字符串，直接让新签发的 License 失效。 */
+function validateEditableConfig(key: string, value: unknown): { value?: unknown; error?: string } {
+  if (key === 'announcements') {
+    if (!Array.isArray(value) || value.length > 20) return { error: '公告必须是最多 20 条的数组' }
+    const announcements: { id: string; title: string; body: string; level: string; publishedAt: string }[] = []
+    for (const item of value) {
+      if (!isRecord(item)) return { error: '公告格式无效' }
+      const id = readText(item.id, 80)
+      const title = readText(item.title, 160)
+      const body = readText(item.body, 2000)
+      const level = readText(item.level, 16)
+      const publishedAt = readText(item.publishedAt, 64)
+      if (!id || !title || !body || !['info', 'warning', 'important'].includes(level) || !publishedAt || Number.isNaN(Date.parse(publishedAt))) {
+        return { error: '公告缺少必要字段或级别、发布时间无效' }
+      }
+      announcements.push({ id, title, body, level, publishedAt })
+    }
+    return { value: announcements }
+  }
+  if (typeof value !== 'number' || !Number.isFinite(value) || !Number.isInteger(value)) return { error: '配置值必须是整数' }
+  const ranges: Record<string, [number, number]> = {
+    license_ttl_hours: [1, 24 * 31],
+    rebind_cooldown_hours: [1, 24 * 30],
+    offline_grace_days: [0, 30],
+  }
+  const range = ranges[key]
+  if (!range || value < range[0] || value > range[1]) return { error: '配置值超出允许范围' }
+  return { value }
+}
 
 r.get('/config', requireCap(CAPS.SITE_CONFIGURE), async (c) => {
   const { results } = await c.env.DB.prepare('SELECT key, value FROM site_config').all<{
@@ -290,16 +482,18 @@ r.put('/config/:key', requireCap(CAPS.SITE_CONFIGURE), async (c) => {
 
   const body = await c.req.json<{ value?: unknown }>().catch(() => ({}) as { value?: unknown })
   if (body.value === undefined) return c.json({ ok: false, error: '缺少 value' }, 400)
+  const validated = validateEditableConfig(key, body.value)
+  if (validated.value === undefined) return c.json({ ok: false, error: validated.error }, 400)
 
   await c.env.DB.prepare('INSERT OR REPLACE INTO site_config (key, value) VALUES (?, ?)')
-    .bind(key, JSON.stringify(body.value))
+    .bind(key, JSON.stringify(validated.value))
     .run()
 
   await recordAudit(c.env.DB, {
     actor: user.sub,
     action: AUDIT.SITE_CONFIG_UPDATE,
     target: key,
-    detail: body.value,
+    detail: validated.value,
   })
   return c.json({ ok: true })
 })

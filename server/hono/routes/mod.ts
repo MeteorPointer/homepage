@@ -121,10 +121,10 @@ r.post('/validate', async (c) => {
 
   // 6. 设备绑定
   if (firstBind) {
-    await c.env.DB.prepare(
+    const bound = await c.env.DB.prepare(
       `UPDATE mod_tokens
           SET bound_fingerprint = ?, bound_at = ?, machine_hint = ?, device_name = ?
-        WHERE token = ?`,
+        WHERE token = ? AND bound_fingerprint IS NULL`,
     )
       .bind(
         fingerprint,
@@ -134,6 +134,10 @@ r.post('/validate', async (c) => {
         token,
       )
       .run()
+
+    if (!bound.meta.changes) {
+      return c.json(invalid('DEVICE_MISMATCH', '此 token 已绑定其他设备，请在网站重置绑定'))
+    }
 
     await recordAudit(c.env.DB, {
       actor: row.sub,
@@ -266,11 +270,17 @@ r.post('/token/generate', requireLevel(MOD_MIN_LEVEL), async (c) => {
   const token = crypto.randomUUID()
   const now = nowIso()
 
-  await c.env.DB.prepare(
-    `INSERT INTO mod_tokens (token, sub, created_at, reset_at) VALUES (?, ?, ?, ?)`,
+  const inserted = await c.env.DB.prepare(
+    `INSERT OR IGNORE INTO mod_tokens (token, sub, created_at, reset_at) VALUES (?, ?, ?, ?)`,
   )
     .bind(token, user.sub, now, existing ? now : null)
     .run()
+  if (!inserted.meta.changes) {
+    return c.json(
+      { ok: false, code: 'TOKEN_STATE_CHANGED', error: '令牌状态刚刚更新，请刷新后重试' },
+      409,
+    )
+  }
 
   await recordAudit(c.env.DB, {
     actor: user.sub,

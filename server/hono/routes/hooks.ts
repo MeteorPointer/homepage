@@ -17,7 +17,7 @@ import { reconcileUser } from '../lib/prismSync'
 import { markUserDeleted } from '../lib/users'
 import { destroySessionsForUser } from '../lib/session'
 import { AUDIT, recordAudit } from '../lib/audit'
-import { GROUP_TO_ROLE } from '../lib/roles'
+import { GROUP_TO_ROLE, ROLE_KEYS, type RoleKey } from '../lib/roles'
 
 const r = new Hono<AppBindings>()
 
@@ -47,6 +47,17 @@ interface WebhookPayload {
  */
 function looksUninterpolated(v: string): boolean {
   return /^\{\w+\}$/.test(v)
+}
+
+/** webhook 无法回查 Prism 时，多个新增组仍要按最高等级映射。 */
+function highestMappedRole(slugs: string[]): RoleKey | null {
+  let best: RoleKey | null = null
+  for (const slug of slugs) {
+    const role = GROUP_TO_ROLE[slug.trim().toLowerCase()]
+    if (!role) continue
+    if (!best || ROLE_KEYS.indexOf(role) > ROLE_KEYS.indexOf(best)) best = role
+  }
+  return best
 }
 
 r.post('/prism/audit', async (c) => {
@@ -99,8 +110,7 @@ r.post('/prism/audit', async (c) => {
         : []
 
       // 有新增组时，按新增里等级最高的推算；否则认为已无组
-      const fallback =
-        added.map((s) => GROUP_TO_ROLE[s.trim().toLowerCase()]).find(Boolean) ?? 'guest'
+      const fallback = highestMappedRole(added) ?? 'guest'
 
       const result = await reconcileUser(c.env, sub, fallback, 'webhook.groups_change')
       console.log('[hooks] groups_change', sub, 'removed=', removed, '→', result?.role)

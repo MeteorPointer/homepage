@@ -6,6 +6,7 @@
 import { Hono } from 'hono'
 import type { AppBindings } from '../types'
 import { edgeCache } from '../lib/cache'
+import { CAPS, hasPerm, resolveUser } from '../lib/rbac'
 
 // 挂在 /uploads 而非 /api 下：R2 对象的 URL 直接对外，路径要稳定好看
 const r = new Hono<AppBindings>().basePath('/uploads')
@@ -19,6 +20,29 @@ const PUBLIC_PATTERNS = [
 
 function isPublic(key: string): boolean {
   return PUBLIC_PATTERNS.some((re) => re.test(key))
+}
+
+const WORKSHOP_IMAGE = /^uploads\/workshop\/([^/]+)\/images\/[^/]+$/
+type WorkshopImageAccess = 'public' | 'private' | 'denied'
+
+/** 待审核作品的图片只能由作者或审核员访问，且不得读取公开边缘缓存。 */
+async function workshopImageAccess(
+  c: Parameters<typeof resolveUser>[0],
+  key: string,
+): Promise<WorkshopImageAccess> {
+  const matched = key.match(WORKSHOP_IMAGE)
+  if (!matched) return 'public'
+
+  const row = await c.env.DB.prepare('SELECT status, author_sub FROM workshop_items WHERE id = ?')
+    .bind(matched[1])
+    .first<{ status: string; author_sub: string | null }>()
+  if (!row) return 'denied'
+  if (row.status === 'published') return 'public'
+
+  const user = await resolveUser(c)
+  return user && (user.sub === row.author_sub || hasPerm(user, CAPS.WORKSHOP_REVIEW))
+    ? 'private'
+    : 'denied'
 }
 
 r.get('/*', async (c) => {
@@ -46,8 +70,13 @@ r.get('/*', async (c) => {
     )
   }
 
+  // 必须在读取边缘缓存前校验发布状态，撤回作品不能继续命中旧缓存。
+  const access = await workshopImageAccess(c, key)
+  if (access === 'denied') return c.notFound()
+  const cacheable = access === 'public'
+
   const cache = edgeCache()
-  const cached = await cache?.match(c.req.raw)
+  const cached = cacheable ? await cache?.match(c.req.raw) : undefined
   if (cached) return cached
 
   const obj = await c.env.R2.get(key)
@@ -55,12 +84,12 @@ r.get('/*', async (c) => {
 
   const headers = new Headers()
   headers.set('Content-Type', obj.httpMetadata?.contentType ?? 'application/octet-stream')
-  headers.set('Cache-Control', 'public, max-age=86400')
+  headers.set('Cache-Control', cacheable ? 'public, max-age=86400' : 'private, no-store')
   headers.set('X-Content-Type-Options', 'nosniff')
   if (obj.httpEtag) headers.set('ETag', obj.httpEtag)
 
   const res = new Response(obj.body, { headers })
-  if (cache) c.executionCtx?.waitUntil(cache.put(c.req.raw, res.clone()))
+  if (cacheable && cache) c.executionCtx?.waitUntil(cache.put(c.req.raw, res.clone()))
   return res
 })
 
