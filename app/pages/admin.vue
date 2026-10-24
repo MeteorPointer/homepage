@@ -80,10 +80,6 @@ const active = ref(tabs.value[0]?.key ?? '')
         <AdminDevelopersTab v-else-if="active === 'developers'" />
         <AdminAuditTab v-else-if="active === 'audit'" />
       </div>
-
-      <p class="mt-10 text-xs text-(--ui-text-dimmed)">
-        用户角色由 Prism 团队身份组决定，本站不提供修改入口。需要调整权限请到 Prism 的团队页面操作。
-      </p>
     </template>
   </div>
 </template>

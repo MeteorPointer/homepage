@@ -11,6 +11,19 @@ const nav = [
 
 const route = useRoute()
 const isActive = (to: string) => (to === '/' ? route.path === '/' : route.path.startsWith(to))
+
+const ADMIN_CAPABILITIES = [
+  'feedback.manage',
+  'workshop.review',
+  'mods.manage',
+  'developers.manage',
+  'audit.view',
+  'site.configure',
+]
+const canAccessAdmin = computed(() => {
+  const permissions = user.value?.permissions ?? []
+  return permissions.includes('*') || ADMIN_CAPABILITIES.some((capability) => permissions.includes(capability))
+})
 </script>
 
 <template>
@@ -27,6 +40,14 @@ const isActive = (to: string) => (to === '/' ? route.path === '/' : route.path.s
           :class="isActive(item.to) ? 'text-(--ui-text-highlighted)' : 'text-(--ui-text-muted)'"
         >
           {{ item.label }}
+        </NuxtLink>
+        <NuxtLink
+          v-if="canAccessAdmin"
+          to="/admin"
+          class="transition-colors hover:text-(--ui-text-highlighted)"
+          :class="isActive('/admin') ? 'text-(--ui-text-highlighted)' : 'text-(--ui-text-muted)'"
+        >
+          管理
         </NuxtLink>
       </nav>
 
