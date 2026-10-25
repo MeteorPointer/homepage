@@ -1,6 +1,6 @@
 // 创意工坊 —— 公开读部分。
 //
-// 关键约束（设计条目 W3/W5）：站内只提供预览，下载一律走投稿者填写的站外链接。
+// 关键约束（设计条目 W3/W5）：站内展示信息与截图，下载一律走投稿者填写的站外链接。
 // 因此 files 只返回元信息（名称、类型、大小），**绝不返回可直接下载的 URL**。
 // 结构文件本身在 R2 里没有公开访问路径。
 import { Hono } from 'hono'
@@ -121,10 +121,18 @@ r.get('/:id', async (c) => {
   }
 
   const files = parseJson<Record<string, unknown>>(row.files, {}, `workshop.${row.id}.files`)
+  const images = Array.isArray(files.images)
+    ? files.images
+      .filter((image): image is Record<string, unknown> => !!image && typeof image === 'object')
+      .flatMap((image) => typeof image.url === 'string' && image.url
+        ? [{ name: typeof image.name === 'string' ? image.name : '截图', url: image.url, size: typeof image.size === 'number' ? image.size : undefined }]
+        : [])
+    : []
 
   const item: WorkshopItem = {
     ...toSummary(row),
     externalLinks: parseJson(row.external_links, [], `workshop.${row.id}.links`),
+    images,
     files: shapeFiles(files),
     status: row.status as WorkshopItem['status'],
     updatedAt: row.updated_at,

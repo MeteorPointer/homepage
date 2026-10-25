@@ -79,7 +79,7 @@ async function submit() {
         <UTextarea v-model="form.description" :rows="5" :maxlength="2000" />
       </UFormField>
 
-      <UFormField label="文件" hint="截图 + 结构文件">
+      <UFormField label="文件" hint="截图 + 作品文件（供审核）">
         <input
           type="file"
           multiple
@@ -112,14 +112,14 @@ async function submit() {
       </UFormField>
 
       <!--
-        这条规则要在投稿时就说清楚：上传的结构文件只用于站内预览，
+        这条规则要在投稿时就说清楚：上传的作品文件仅供审核，
         玩家实际下载走的是上面这些链接。链接失效等于作品不可用。
       -->
       <UAlert
         color="neutral"
         variant="subtle"
         title="关于下载"
-        description="上传的结构文件仅用于站内 3D 预览，不提供下载。玩家通过你填写的站外链接获取文件，请确保链接长期有效。"
+        description="上传的作品文件仅供审核，不提供站内下载。玩家通过你填写的站外链接获取文件，请确保链接长期有效。"
       />
 
       <UButton :loading="submitting" @click="submit">提交审核</UButton>

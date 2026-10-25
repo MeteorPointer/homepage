@@ -56,8 +56,10 @@ export interface WorkshopItemSummary {
 }
 
 export interface WorkshopItem extends WorkshopItemSummary {
-  /** 站内只做预览，下载一律走这些站外链接 */
+  /** 下载一律走这些站外链接 */
   externalLinks: { label: string; url: string }[]
+  /** 已上传的作品截图。未发布作品仅作者与审核员可读取。 */
+  images: { name: string; url: string; size?: number }[]
   /** 结构文件的元信息。注意：不含可直接下载的 URL */
   files: { name: string; kind: string; size?: number }[]
   status: WorkshopStatus

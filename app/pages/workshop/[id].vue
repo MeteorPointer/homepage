@@ -22,6 +22,20 @@ useHead({ title: () => `${data.value?.item.title ?? '作品'} · 创意工坊` }
 
     <p class="mt-6 whitespace-pre-line">{{ data.item.description }}</p>
 
+    <section v-if="data.item.images.length" class="mt-8">
+      <h2 class="mb-3 text-sm font-semibold">作品截图</h2>
+      <div class="grid gap-3 sm:grid-cols-2">
+        <img
+          v-for="image in data.item.images"
+          :key="image.url"
+          :src="image.url"
+          :alt="image.name"
+          loading="lazy"
+          class="aspect-video w-full rounded-(--ui-radius) border border-(--ui-border) object-cover"
+        >
+      </div>
+    </section>
+
     <section v-if="data.item.files.length" class="mt-8">
       <h2 class="mb-2 text-sm font-semibold">包含文件</h2>
       <ul class="space-y-1 text-sm text-(--ui-text-muted)">

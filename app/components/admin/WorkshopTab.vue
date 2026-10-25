@@ -5,6 +5,7 @@ interface Item {
   category: string
   description: string
   externalLinks: { label: string; url: string }[]
+  files: { index: number; name: string; kind: string }[]
   authorName: string
   status: string
   reviewReason: string
@@ -92,6 +93,23 @@ async function review(id: string, next: string) {
           </ul>
         </div>
         <p v-else class="mt-3 text-sm text-(--ui-text-warning)">未提供下载链接</p>
+
+        <div v-if="item.files?.length" class="mt-3">
+          <p class="text-xs text-(--ui-text-dimmed)">投稿文件（下载会写入审计日志）</p>
+          <div class="mt-1 flex flex-wrap gap-2">
+            <UButton
+              v-for="file in item.files"
+              :key="file.index"
+              :to="`/api/admin/workshop/${item.id}/file/${file.index}`"
+              external
+              target="_blank"
+              size="xs"
+              variant="subtle"
+            >
+              下载 {{ file.name }}
+            </UButton>
+          </div>
+        </div>
 
         <p v-if="item.reviewReason" class="mt-2 text-sm text-(--ui-text-dimmed)">
           审核意见：{{ item.reviewReason }}

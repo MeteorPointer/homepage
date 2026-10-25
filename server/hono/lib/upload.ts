@@ -1,11 +1,11 @@
 // 上传校验与 R2 写入。
 //
 // key 结构决定了可见性（见 routes/uploads.ts 的白名单）：
-//   workshop/<id>/images/<uuid>.<ext>   公开，作为作品预览图
+//   workshop/<id>/images/<uuid>.<ext>   公开，作为作品截图
 //   workshop/<id>/files/<uuid>.<ext>    私有，仅审核员可取
 //   developers/<slug>/<uuid>.<ext>      公开
 //
-// 结构文件永远不给公开 URL —— 站内只做预览，下载走投稿者的站外链接。
+// 结构文件永远不给公开 URL —— 仅供审核核对，下载走投稿者的站外链接。
 const IMAGE_EXT = new Set(['png', 'jpg', 'jpeg', 'webp'])
 const STRUCTURE_EXT = new Set(['nbt', 'schem', 'schematic', 'litematic'])
 

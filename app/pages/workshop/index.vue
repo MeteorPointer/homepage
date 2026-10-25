@@ -7,6 +7,7 @@ const { data } = await useFetch<{
   items: WorkshopItemSummary[]
   total: number
 }>('/api/workshop')
+const { user } = useAuth()
 </script>
 
 <template>
@@ -15,10 +16,13 @@ const { data } = await useFetch<{
       <div>
         <h1 class="text-2xl font-bold">创意工坊</h1>
         <p class="mt-2 text-sm text-(--ui-text-muted)">
-          站内提供在线预览，下载请使用作品页提供的站外链接。
+          站内展示作品信息与截图；下载请使用作品页提供的站外链接。
         </p>
       </div>
-      <UButton to="/workshop/submit" variant="subtle">投稿</UButton>
+      <div class="flex shrink-0 gap-2">
+        <UButton v-if="user" to="/workshop/mine" variant="ghost">我的投稿</UButton>
+        <UButton to="/workshop/submit" variant="subtle">投稿</UButton>
+      </div>
     </header>
 
     <div v-if="data?.items?.length" class="grid gap-4 sm:grid-cols-2">
@@ -37,6 +41,12 @@ const { data } = await useFetch<{
       </NuxtLink>
     </div>
 
-    <p v-else class="text-sm text-(--ui-text-dimmed)">还没有已发布的作品。</p>
+    <div
+      v-else
+      class="rounded-(--ui-radius) border border-dashed border-(--ui-border) px-6 py-10 text-center"
+    >
+      <p class="text-sm text-(--ui-text-dimmed)">还没有已发布的作品。</p>
+      <UButton to="/workshop/submit" size="sm" variant="subtle" class="mt-4">成为第一位投稿者</UButton>
+    </div>
   </div>
 </template>

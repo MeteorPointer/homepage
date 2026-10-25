@@ -63,7 +63,7 @@ r.get('/*', async (c) => {
   if (!key.startsWith('uploads/') || key.includes('..')) return c.notFound()
 
   if (!isPublic(key)) {
-    // 结构文件只能在站内预览，下载请走作品的站外链接
+    // 作品文件仅供审核，下载请走作品的站外链接
     return c.json(
       { ok: false, code: 'NOT_PUBLIC', error: '该文件不提供直接下载，请使用作品页的站外链接' },
       403,

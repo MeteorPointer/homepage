@@ -26,6 +26,9 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      - name: Contract checks
+        run: pnpm test
+
       - name: Build
         run: pnpm build
 

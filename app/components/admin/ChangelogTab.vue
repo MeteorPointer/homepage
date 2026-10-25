@@ -1,0 +1,9 @@
+<script setup lang="ts">
+const toast = useToast()
+const form = reactive({ version: '', title: '', body: '' })
+const saving = ref(false)
+const { data, refresh } = await useFetch<{ entries: { id: string; version: string; title: string; body: string; publishedAt: string }[] }>('/api/changelog', { query: { limit: 50 }, server: false })
+async function create() { if (!form.version.trim() || !form.title.trim()) return; saving.value = true; try { await $fetch('/api/admin/changelog', { method: 'POST', body: form }); Object.assign(form, { version: '', title: '', body: '' }); await refresh(); toast.add({ title: '已发布', color: 'success' }) } catch (error) { toast.add({ title: (error as { data?: { error?: string } }).data?.error ?? '发布失败', color: 'error' }) } finally { saving.value = false } }
+async function remove(id: string) { try { await $fetch(`/api/admin/changelog/${id}`, { method: 'DELETE' }); await refresh(); toast.add({ title: '已删除', color: 'success' }) } catch { toast.add({ title: '删除失败', color: 'error' }) } }
+</script>
+<template><div><div class="space-y-3 rounded-(--ui-radius) border border-(--ui-border) p-4"><UInput v-model="form.version" placeholder="版本号" /><UInput v-model="form.title" placeholder="标题" /><UTextarea v-model="form.body" :rows="3" placeholder="更新内容" /><UButton size="sm" :loading="saving" @click="create">发布更新</UButton></div><div class="mt-6 space-y-3"><article v-for="entry in data?.entries" :key="entry.id" class="rounded-(--ui-radius) border border-(--ui-border) p-4"><div class="flex gap-2"><UBadge size="sm" variant="subtle">{{ entry.version }}</UBadge><strong>{{ entry.title }}</strong><UButton size="xs" class="ml-auto" variant="ghost" color="error" @click="remove(entry.id)">删除</UButton></div><p class="mt-2 text-sm text-(--ui-text-muted)">{{ entry.body }}</p></article></div></div></template>

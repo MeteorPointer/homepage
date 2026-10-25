@@ -16,6 +16,30 @@ const ERROR_TEXT: Record<string, string> = {
   login_failed: '登录失败，请稍后重试。',
   access_denied: '你取消了授权。',
 }
+
+const profile = reactive({ avatar: '', intro: '', cover: '' })
+const savingProfile = ref(false)
+const toast = useToast()
+const { data: profileData } = await useFetch<{ profile: typeof profile }>("/api/auth/profile", {
+  server: false,
+  immediate: !!user.value,
+})
+watch(profileData, (data) => {
+  if (data?.profile) Object.assign(profile, data.profile)
+}, { immediate: true })
+
+async function saveProfile() {
+  savingProfile.value = true
+  try {
+    await $fetch('/api/auth/profile', { method: 'PATCH', body: profile })
+    toast.add({ title: '资料已保存', color: 'success' })
+  } catch (error) {
+    const e = error as { data?: { error?: string } }
+    toast.add({ title: e.data?.error ?? '保存失败', color: 'error' })
+  } finally {
+    savingProfile.value = false
+  }
+}
 </script>
 
 <template>
@@ -63,6 +87,17 @@ const ERROR_TEXT: Record<string, string> = {
         <UBadge variant="subtle">{{ roleLabel }}</UBadge>
       </div>
       <p class="mt-1 text-sm text-(--ui-text-dimmed)">@{{ user.username }}</p>
+
+      <section class="mt-8">
+        <h2 class="text-lg font-semibold">公开资料</h2>
+        <p class="mt-1 text-sm text-(--ui-text-muted)">用户名和身份组由 SiiWay Team 管理；这里只维护本站展示资料。</p>
+        <div class="mt-4 space-y-3">
+          <UInput v-model="profile.avatar" placeholder="头像地址（HTTPS，可选）" />
+          <UInput v-model="profile.cover" placeholder="封面地址（HTTPS，可选）" />
+          <UTextarea v-model="profile.intro" :rows="3" :maxlength="1000" placeholder="个人简介（可选）" />
+          <UButton size="sm" :loading="savingProfile" @click="saveProfile">保存资料</UButton>
+        </div>
+      </section>
 
       <!--
         已登录但没有任何身份组：说明还没通过 NSUK 通道加入团队。

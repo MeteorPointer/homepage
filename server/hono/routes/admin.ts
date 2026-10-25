@@ -183,7 +183,7 @@ r.get('/workshop', requireCap(CAPS.WORKSHOP_REVIEW), async (c) => {
   const status = c.req.query('status')?.trim() || 'pending'
 
   const { results } = await c.env.DB.prepare(
-    `SELECT id, title, category, description, external_links, author_display_name,
+    `SELECT id, title, category, description, files, external_links, author_display_name,
             status, review_reason, created_at
        FROM workshop_items WHERE status = ?
       ORDER BY created_at ASC LIMIT ? OFFSET ?`,
@@ -194,6 +194,7 @@ r.get('/workshop', requireCap(CAPS.WORKSHOP_REVIEW), async (c) => {
       title: string
       category: string
       description: string
+      files: string
       external_links: string
       author_display_name: string
       status: string
@@ -210,6 +211,8 @@ r.get('/workshop', requireCap(CAPS.WORKSHOP_REVIEW), async (c) => {
       description: w.description,
       // 审核时要人工核对外链与上传文件是否一致，所以这里必须给出链接
       externalLinks: parseJson(w.external_links, [], `workshop.${w.id}.links`),
+      files: parseJson<{ items?: { name?: string; kind?: string }[] }>(w.files, {}, `workshop.${w.id}.files`).items
+        ?.map((file, index) => ({ index, name: String(file.name ?? '未命名文件'), kind: String(file.kind ?? 'file') })) ?? [],
       authorName: w.author_display_name,
       status: w.status,
       reviewReason: w.review_reason,

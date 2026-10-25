@@ -4,7 +4,7 @@
 -- 纯展示且结构自由的保留 JSON blob。
 
 -- ─── 创意工坊 ───
--- 结构文件仅供站内预览，下载一律走投稿者提供的站外链接（设计条目 W2/W5）。
+-- 结构文件仅供审核核对，下载一律走投稿者提供的站外链接（设计条目 W2/W5）。
 CREATE TABLE IF NOT EXISTS workshop_items (
   id                  TEXT PRIMARY KEY,
   draft_id            TEXT,

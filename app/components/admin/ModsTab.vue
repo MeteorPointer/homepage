@@ -110,7 +110,7 @@ async function remove(id: string) {
         :key="mod.id"
         class="flex items-center gap-3 rounded-(--ui-radius) border border-(--ui-border) p-4"
       >
-        <img v-if="mod.icon" :src="mod.icon" alt="" class="h-10 w-10 rounded object-cover" />
+        <img v-if="mod.icon" :src="mod.icon" alt="" class="h-10 w-10 rounded object-cover">
         <div class="min-w-0 flex-1">
           <p class="font-medium">
             {{ mod.name }}

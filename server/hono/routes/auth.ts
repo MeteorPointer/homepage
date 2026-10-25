@@ -23,7 +23,7 @@ import {
   getSession,
 } from '../lib/session'
 import { roleFromClaims, upsertUserFromClaims } from '../lib/users'
-import { resolveUser } from '../lib/rbac'
+import { requireAuth, resolveUser } from '../lib/rbac'
 import { timingSafeEqual } from '../lib/crypto'
 
 const r = new Hono<AppBindings>()
@@ -209,6 +209,41 @@ r.get('/me', async (c) => {
     configured: isPrismConfigured(c.env),
     joinUrl: c.env.PRISM_JOIN_URL ?? '',
   })
+})
+
+function profileUrl(value: unknown): string | null {
+  const url = typeof value === 'string' ? value.trim().slice(0, 2048) : ''
+  if (!url) return ''
+  if (url.startsWith('/uploads/')) return url
+  try {
+    return new URL(url).protocol === 'https:' ? url : null
+  } catch {
+    return null
+  }
+}
+
+/** 用户可维护本站资料；身份、用户名与角色仍完全由 Prism 管理。 */
+r.get('/profile', requireAuth(), async (c) => {
+  const user = c.get('user')!
+  const profile = await c.env.DB.prepare('SELECT avatar_override, intro, cover FROM users WHERE sub = ?')
+    .bind(user.sub)
+    .first<{ avatar_override: string; intro: string; cover: string }>()
+  return c.json({ ok: true, profile: { avatar: profile?.avatar_override ?? '', intro: profile?.intro ?? '', cover: profile?.cover ?? '' } })
+})
+
+r.patch('/profile', requireAuth(), async (c) => {
+  const user = c.get('user')!
+  const body = await c.req
+    .json<{ avatar?: unknown; intro?: unknown; cover?: unknown }>()
+    .catch((): { avatar?: unknown; intro?: unknown; cover?: unknown } => ({}))
+  const avatar = profileUrl(body.avatar)
+  const cover = profileUrl(body.cover)
+  if (avatar === null || cover === null) return c.json({ ok: false, error: '头像和封面仅支持 HTTPS 或本站上传地址' }, 400)
+  const intro = typeof body.intro === 'string' ? body.intro.trim().slice(0, 1000) : ''
+  await c.env.DB.prepare('UPDATE users SET avatar_override = ?, intro = ?, cover = ?, updated_at = ? WHERE sub = ?')
+    .bind(avatar, intro, cover, new Date().toISOString(), user.sub)
+    .run()
+  return c.json({ ok: true, profile: { avatar, intro, cover } })
 })
 
 export default r
