@@ -1,4 +1,8 @@
-# NSUK 模组授权设计
+# NSUK 模组授权设计（旧版 token 迁移参考）
+
+> 当前生产目标已经迁移到设备码授权 v2；规范见
+> [`mod-device-authorization.md`](./mod-device-authorization.md)。本文件保留用于解释旧
+> `/api/mod/validate`、`mod_tokens` 和迁移兼容行为，不再作为新客户端实现依据。
 
 > 状态：设计待评审
 > 适用范围：NSUK 官网重构分支 + NeoForge 模组客户端
@@ -43,12 +47,12 @@
 
 四个端点，前端契约见 `public/assets/account.js:117-217`：
 
-| 端点 | 权限 | 用途 |
-|---|---|---|
-| `POST /api/mod/validate` | 公开 | 模组校验 `token` + `fingerprint`，首次调用自动绑定设备 |
-| `GET /api/mod/token` | 登录 + level≥1 | 查询当前令牌与绑定状态 |
-| `POST /api/mod/token/generate` | 登录 + level≥1 | 生成令牌 |
-| `POST /api/mod/token/reset` | 登录 + level≥1 | 重置设备绑定，24 小时冷却 |
+| 端点                           | 权限           | 用途                                                   |
+| ------------------------------ | -------------- | ------------------------------------------------------ |
+| `POST /api/mod/validate`       | 公开           | 模组校验 `token` + `fingerprint`，首次调用自动绑定设备 |
+| `GET /api/mod/token`           | 登录 + level≥1 | 查询当前令牌与绑定状态                                 |
+| `POST /api/mod/token/generate` | 登录 + level≥1 | 生成令牌                                               |
+| `POST /api/mod/token/reset`    | 登录 + level≥1 | 重置设备绑定，24 小时冷却                              |
 
 ### 沿用的既有设计
 
@@ -64,17 +68,17 @@
 
 ### 本方案的改动
 
-| 改动 | 说明 |
-|---|---|
+| 改动                                 | 说明                                               |
+| ------------------------------------ | -------------------------------------------------- |
 | `validate` 响应增加 `license` 等字段 | 模组据此本地验签，**离线可用**，且续期无需玩家操作 |
-| 令牌绑定 `sub` 而非 `username` | 账号体系迁移到 Prism |
-| level 语义更新为新的五级身份组 | 见第三节 |
-| 加入速率限制 | 原 `validate` 是公开端点且完全无限流 |
-| 加入吊销机制 | 原令牌永久有效，无法作废 |
-| 冷却时长改为可配置 | 原代码写死 24 小时，注释写的是 30 天，两处不一致 |
-| `generate` 允许重新生成 | 原实现在已有令牌时直接 400，玩家无法应对令牌泄露 |
-| 响应增加机器可读的 `code` | 原实现只有中文 `message`，模组无法据此分支处理 |
-| schema 移入 migration | 原 `mod.js:10-29` 在请求路径上 `CREATE TABLE` |
+| 令牌绑定 `sub` 而非 `username`       | 账号体系迁移到 Prism                               |
+| level 语义更新为新的五级身份组       | 见第三节                                           |
+| 加入速率限制                         | 原 `validate` 是公开端点且完全无限流               |
+| 加入吊销机制                         | 原令牌永久有效，无法作废                           |
+| 冷却时长改为可配置                   | 原代码写死 24 小时，注释写的是 30 天，两处不一致   |
+| `generate` 允许重新生成              | 原实现在已有令牌时直接 400，玩家无法应对令牌泄露   |
+| 响应增加机器可读的 `code`            | 原实现只有中文 `message`，模组无法据此分支处理     |
+| schema 移入 migration                | 原 `mod.js:10-29` 在请求路径上 `CREATE TABLE`      |
 
 ---
 
@@ -110,12 +114,12 @@
 Prism 团队身份组 slug 与官网角色一一对应：
 
 | Prism group slug | 官网 role_key | level | 模组授权 |
-|---|---|---|---|
-| （无 group） | `guest` | 0 | ✗ |
-| `sponsor` | `sponsor` | 1 | ✓ |
-| `staff` | `staff` | 2 | ✓ |
-| `developer` | `developer` | 3 | ✓ |
-| `admin` | `admin` | 4 | ✓ |
+| ---------------- | ------------- | ----- | -------- |
+| （无 group）     | `guest`       | 0     | ✗        |
+| `sponsor`        | `sponsor`     | 1     | ✓        |
+| `staff`          | `staff`       | 2     | ✓        |
+| `developer`      | `developer`   | 3     | ✓        |
+| `admin`          | `admin`       | 4     | ✓        |
 
 **模组授权对赞助者及以上开放**，即沿用原实现的 `level >= 1` 判定。
 
@@ -125,9 +129,9 @@ Prism 团队身份组 slug 与官网角色一一对应：
 
 「用户验证」与「内测验证」是两件事，但正确的分法不是搭两套独立系统：
 
-| | 判定依据 | 持有的凭证 |
-|---|---|---|
-| 官网 | Prism 身份组 | 会话 cookie（KV） |
+|      | 判定依据     | 持有的凭证              |
+| ---- | ------------ | ----------------------- |
+| 官网 | Prism 身份组 | 会话 cookie（KV）       |
 | 模组 | Prism 身份组 | License JWT（本地文件） |
 
 **身份来源统一**（一处维护，改一次全局生效），**凭证各自独立**（模组根本不接触 Prism，拿的是官网签发的东西）。
@@ -138,11 +142,11 @@ Prism 团队身份组 slug 与官网角色一一对应：
 
 官网 D1 中的 `role_key` 是派生字段，靠三条途径保持新鲜：
 
-| 途径 | 时机 | 覆盖范围 |
-|---|---|---|
-| 登录同步 | 用户网页登录时读 ID token claim | 只覆盖会上网页的用户 |
+| 途径              | 时机                                         | 覆盖范围                 |
+| ----------------- | -------------------------------------------- | ------------------------ |
+| 登录同步          | 用户网页登录时读 ID token claim              | 只覆盖会上网页的用户     |
 | **Prism webhook** | `team.member.groups_change` 等事件触发后回查 | 覆盖全部用户，**主路径** |
-| 定期对账 | cron 拉取团队成员列表全量比对 | 兜底，见下 |
+| 定期对账          | cron 拉取团队成员列表全量比对                | 兜底，见下               |
 
 **为什么需要第三条**：Prism 的 audit webhook 是 best-effort 投递，**无重试、无签名**。丢一条 `groups_change` 事件，被取消资格的用户就会一直续期成功，而且没人会发现。
 
@@ -184,27 +188,27 @@ CREATE INDEX idx_mod_tokens_sub ON mod_tokens(sub);
 
 请求体沿用 `{ token, fingerprint }`，可选新增 `machine_hint`、`device_name`。
 
-| # | 校验项 | `code` | `message` |
-|---|---|---|---|
-| 1 | 速率限制（按 IP + 按 token） | `RATE_LIMITED` | 请求过于频繁，请稍后再试 |
-| 2 | `token` 与 `fingerprint` 均非空 | `BAD_REQUEST` | 缺少 token 或 fingerprint |
-| 3 | 令牌存在（JOIN `users` + `roles`） | `TOKEN_NOT_FOUND` | token 不存在 |
-| 4 | `revoked_at` 为空 | `TOKEN_REVOKED` | 此令牌已作废，请在网站重新生成 |
-| 5 | `level >= 1` | `NOT_SPONSOR` | 权限不足，需要赞助者身份 |
-| 6 | 未绑定 → 绑定并放行；已绑定 → 指纹必须一致 | `DEVICE_MISMATCH` | 此 token 已绑定其他设备，请在网站重置绑定 |
-| 7 | 签发 License，更新 `current_jti` / `last_seen_at` | — | 首次激活成功 / 空 |
+| #   | 校验项                                            | `code`            | `message`                                 |
+| --- | ------------------------------------------------- | ----------------- | ----------------------------------------- |
+| 1   | 速率限制（按 IP + 按 token）                      | `RATE_LIMITED`    | 请求过于频繁，请稍后再试                  |
+| 2   | `token` 与 `fingerprint` 均非空                   | `BAD_REQUEST`     | 缺少 token 或 fingerprint                 |
+| 3   | 令牌存在（JOIN `users` + `roles`）                | `TOKEN_NOT_FOUND` | token 不存在                              |
+| 4   | `revoked_at` 为空                                 | `TOKEN_REVOKED`   | 此令牌已作废，请在网站重新生成            |
+| 5   | `level >= 1`                                      | `NOT_SPONSOR`     | 权限不足，需要赞助者身份                  |
+| 6   | 未绑定 → 绑定并放行；已绑定 → 指纹必须一致        | `DEVICE_MISMATCH` | 此 token 已绑定其他设备，请在网站重置绑定 |
+| 7   | 签发 License，更新 `current_jti` / `last_seen_at` | —                 | 首次激活成功 / 空                         |
 
 第 1、4 步是新增，其余与原实现一致，连 `message` 文案都保持不变。
 
 **`code` 字段是新增的**：原实现只返回中文 `message`，模组要分支处理只能匹配字符串，文案一改就断。加上机器可读的 `code` 后，模组按下表决定本地状态：
 
-| `code` | 清除本地 license | 清除本地 token | 玩家需要做什么 |
-|---|---|---|---|
-| `TOKEN_NOT_FOUND` | ✓ | ✓ | 重新去网页生成并填入 |
-| `TOKEN_REVOKED` | ✓ | ✓ | 重新去网页生成并填入 |
-| `NOT_SPONSOR` | ✓ | ✗ | 恢复赞助后自动可用，无需重填 |
-| `DEVICE_MISMATCH` | ✓ | ✗ | 去网页重置绑定，无需重填 |
-| `RATE_LIMITED` | ✗ | ✗ | 稍后重试 |
+| `code`            | 清除本地 license | 清除本地 token | 玩家需要做什么               |
+| ----------------- | ---------------- | -------------- | ---------------------------- |
+| `TOKEN_NOT_FOUND` | ✓                | ✓              | 重新去网页生成并填入         |
+| `TOKEN_REVOKED`   | ✓                | ✓              | 重新去网页生成并填入         |
+| `NOT_SPONSOR`     | ✓                | ✗              | 恢复赞助后自动可用，无需重填 |
+| `DEVICE_MISMATCH` | ✓                | ✗              | 去网页重置绑定，无需重填     |
+| `RATE_LIMITED`    | ✗                | ✗              | 稍后重试                     |
 
 区分「清 token」与「留 token」很重要：掉赞助和设备冲突都是**可恢复**的，让玩家重新复制一次令牌纯属折腾。
 
@@ -249,11 +253,11 @@ CREATE INDEX idx_mod_tokens_sub ON mod_tokens(sub);
 
 改为允许重新生成，但**与 reset 共用同一冷却**：
 
-| 情况 | 处理 |
-|---|---|
-| 首次生成 | 立即执行，不进入冷却 |
+| 情况               | 处理                                                              |
+| ------------------ | ----------------------------------------------------------------- |
+| 首次生成           | 立即执行，不进入冷却                                              |
 | 已有令牌、冷却已过 | 删除旧令牌、其 License `jti` 进吊销名单，生成新令牌并开始新的冷却 |
-| 已有令牌、冷却中 | `429 REBIND_COOLDOWN` |
+| 已有令牌、冷却中   | `429 REBIND_COOLDOWN`                                             |
 
 **为什么不给重新生成开免冷却的口子**：它会清除设备绑定，效果与 reset 完全相同。若不受同一约束，玩家反复生成新令牌就能在多台设备间来回切换，冷却机制形同虚设。
 
@@ -293,10 +297,10 @@ CREATE INDEX idx_mod_tokens_sub ON mod_tokens(sub);
 
 有效期存 `site_config`，按阶段调整，不改代码：
 
-| 阶段 | License 有效期 | 离线宽限 | 吊销最大延迟 |
-|---|---|---|---|
-| **内测** | **24 小时** | 3 天 | **4 天** |
-| 正式 | 7 天 | 3 天 | 10 天 |
+| 阶段     | License 有效期 | 离线宽限 | 吊销最大延迟 |
+| -------- | -------------- | -------- | ------------ |
+| **内测** | **24 小时**    | 3 天     | **4 天**     |
+| 正式     | 7 天           | 3 天     | 10 天        |
 
 内测期用 24 小时：模组每天自动续一次（玩家无感），被取消资格的人最多再玩 4 天。代价只是连续断网超过 4 天的玩家需要联网一次，对 MC 玩家不构成障碍。
 
@@ -358,14 +362,14 @@ HTTP 层不用动——端点、请求参数都没变。需要新增的只有四
 
 ### 技术选型：零新增依赖
 
-| 需求 | 使用 |
-|---|---|
-| HTTP 请求 | `java.net.http.HttpClient`（JDK 11+） |
-| JSON 解析 | Gson（NeoForge 自带） |
-| JWT 验签 | `KeyFactory.getInstance("RSA")` + `Signature.getInstance("SHA256withRSA")` |
-| 摘要 | `MessageDigest.getInstance("SHA-256")` |
-| 用户目录 | `System.getenv("APPDATA")` / `System.getProperty("user.home")` |
-| 打开网页 | `Util.getPlatform().openUri()` |
+| 需求      | 使用                                                                       |
+| --------- | -------------------------------------------------------------------------- |
+| HTTP 请求 | `java.net.http.HttpClient`（JDK 11+）                                      |
+| JSON 解析 | Gson（NeoForge 自带）                                                      |
+| JWT 验签  | `KeyFactory.getInstance("RSA")` + `Signature.getInstance("SHA256withRSA")` |
+| 摘要      | `MessageDigest.getInstance("SHA-256")`                                     |
+| 用户目录  | `System.getenv("APPDATA")` / `System.getProperty("user.home")`             |
+| 打开网页  | `Util.getPlatform().openUri()`                                             |
 
 **JWT 验签不要引入 nimbus-jose-jwt 之类的库**——只需支持 RS256 一种算法，手动实现：按 `.` 分段、base64url 解码、用内置公钥验签、检查 `exp` / `iss` / `aud` / `fp`。
 
@@ -438,11 +442,11 @@ HTTP 层不用动——端点、请求参数都没变。需要新增的只有四
 
 ## 十、待定项
 
-| 项 | 说明 |
-|---|---|
-| **无授权时的降级行为** | 模组具体关闭哪些功能，由模组开发者确定 |
-| **定期对账** | P2 加固项，需要官网持有 NSUK 团队的 `team:member:read` scope |
-| **Prism P1 窄 scope** | 未落地前临时使用 `teams:read`，落地后替换 |
+| 项                     | 说明                                                         |
+| ---------------------- | ------------------------------------------------------------ |
+| **无授权时的降级行为** | 模组具体关闭哪些功能，由模组开发者确定                       |
+| **定期对账**           | P2 加固项，需要官网持有 NSUK 团队的 `team:member:read` scope |
+| **Prism P1 窄 scope**  | 未落地前临时使用 `teams:read`，落地后替换                    |
 
 ---
 

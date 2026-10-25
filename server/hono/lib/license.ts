@@ -11,11 +11,26 @@ export interface LicenseClaims {
   sub: string
   jti: string
   iat: number
+  /** 建议客户端开始后台续期的时间；网络失败不影响使用到 exp */
+  refresh_after: number
+  /** 包含离线宽限的绝对硬截止时间 */
   exp: number
-  /** 绑定的设备指纹，模组必须与本机比对 */
-  fp: string
+  mod_id: 'simukraft'
+  license_version: 2
+  install_id: string
+  credential_version: number
+  entitlements: string[]
   tier: string
   name: string
+}
+
+export interface LicensePublicKey {
+  kid: string
+  kty: 'RSA'
+  alg: 'RS256'
+  use: 'sig'
+  n: string
+  e: string
 }
 
 export class LicenseError extends Error {
@@ -45,9 +60,29 @@ async function importPrivateKey(pem: string): Promise<CryptoKey> {
     'pkcs8',
     bytes,
     { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
-    false,
+    true,
     ['sign'],
   )
+}
+
+function keyId(env: Env): string {
+  return String(env.MOD_LICENSE_KEY_ID || 'nsuk-rs256-1').trim() || 'nsuk-rs256-1'
+}
+
+/** 返回与当前私钥对应的公开 JWK；只含 RSA 公钥参数 n/e。 */
+export async function licensePublicKey(env: Env): Promise<LicensePublicKey> {
+  const pem = env.MOD_LICENSE_PRIVATE_KEY
+  if (!pem) throw new LicenseError('未配置 License 签名私钥', 'NOT_CONFIGURED')
+  const jwk = await crypto.subtle.exportKey('jwk', await importPrivateKey(pem))
+  if (!jwk.n || !jwk.e) throw new LicenseError('无法导出 License 公钥', 'INVALID_KEY')
+  return {
+    kid: keyId(env),
+    kty: 'RSA',
+    alg: 'RS256',
+    use: 'sig',
+    n: jwk.n,
+    e: jwk.e,
+  }
 }
 
 export async function signLicense(env: Env, claims: LicenseClaims): Promise<string> {
@@ -56,7 +91,9 @@ export async function signLicense(env: Env, claims: LicenseClaims): Promise<stri
 
   const key = await importPrivateKey(pem)
 
-  const header = base64UrlEncode(encodeUtf8(JSON.stringify({ alg: 'RS256', typ: 'JWT' })))
+  const header = base64UrlEncode(
+    encodeUtf8(JSON.stringify({ alg: 'RS256', typ: 'JWT', kid: keyId(env) })),
+  )
   const payload = base64UrlEncode(encodeUtf8(JSON.stringify(claims)))
   const signingInput = `${header}.${payload}`
 

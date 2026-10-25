@@ -6,7 +6,7 @@ import type { Env } from '../types'
 import { prismConfig, isPrismConfigured } from './config'
 import { getDiscovery, refreshTokens, verifyIdToken } from './oidc'
 import { anyRefreshToken, destroySessionsForUser } from './session'
-import { roleFromClaims, syncRole } from './users'
+import { roleFromClaims, roleFromGroupSlugs, syncRole } from './users'
 import { revokeJti } from './license'
 import { AUDIT, recordAudit } from './audit'
 import { normalizeRoleKey, MOD_MIN_LEVEL, type RoleKey } from './roles'
@@ -36,18 +36,73 @@ export async function verifyRoleWithPrism(env: Env, sub: string): Promise<RoleKe
   }
 }
 
+interface PrismTeamMember {
+  user_id?: string
+  groups?: Array<string | { slug?: string }>
+}
+
+/**
+ * 使用团队长期只读令牌直接核实成员身份组。这个令牌不依赖网页会话的 7 天 TTL，
+ * 是模组设备长期续期的权威路径。
+ */
+export async function verifyRoleWithTeamToken(env: Env, sub: string): Promise<RoleKey | null> {
+  const token = String(env.PRISM_TEAM_READ_TOKEN ?? '').trim()
+  if (!token || !isPrismConfigured(env)) return null
+
+  try {
+    const cfg = prismConfig(env)
+    const response = await fetch(
+      `${cfg.issuer}/api/oauth/me/team/${encodeURIComponent(cfg.teamId)}/members`,
+      {
+        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+        signal: AbortSignal.timeout(8_000),
+      },
+    )
+    if (!response.ok) {
+      console.warn('[prismSync] 团队成员复核失败', response.status)
+      return null
+    }
+
+    const payload = (await response.json()) as { members?: PrismTeamMember[] }
+    const member = payload.members?.find((item) => item.user_id === sub)
+    if (!member) return 'guest'
+    const slugs = (member.groups ?? [])
+      .map((group) => (typeof group === 'string' ? group : (group.slug ?? '')))
+      .filter(Boolean)
+    return roleFromGroupSlugs(env.DB, slugs)
+  } catch (error) {
+    console.warn('[prismSync] 团队服务令牌复核失败', sub, String(error))
+    return null
+  }
+}
+
+/** 优先使用长期团队令牌，未配置或暂时不可用时再尝试用户会话。 */
+export async function verifyCurrentRole(env: Env, sub: string): Promise<RoleKey | null> {
+  return (await verifyRoleWithTeamToken(env, sub)) ?? verifyRoleWithPrism(env, sub)
+}
+
 /** 吊销该用户当前的模组 License，并清掉记录上的 jti */
 async function revokeUserLicense(env: Env, sub: string): Promise<void> {
+  const now = new Date().toISOString()
+  await env.DB.prepare(
+    `UPDATE mod_devices
+        SET revoked_at = ?, revoke_reason = 'role_downgrade',
+            credential_version = credential_version + 1
+      WHERE sub = ? AND revoked_at IS NULL`,
+  )
+    .bind(now, sub)
+    .run()
+
   const row = await env.DB.prepare('SELECT token, current_jti FROM mod_tokens WHERE sub = ?')
     .bind(sub)
     .first<{ token: string; current_jti: string | null }>()
 
-  if (!row?.current_jti) return
-
-  await revokeJti(env.KV, row.current_jti, Math.floor(Date.now() / 1000) + 7 * 24 * 3600)
-  await env.DB.prepare('UPDATE mod_tokens SET current_jti = NULL WHERE token = ?')
-    .bind(row.token)
-    .run()
+  if (row?.current_jti) {
+    await revokeJti(env.KV, row.current_jti, Math.floor(Date.now() / 1000) + 7 * 24 * 3600)
+    await env.DB.prepare('UPDATE mod_tokens SET current_jti = NULL WHERE token = ?')
+      .bind(row.token)
+      .run()
+  }
 
   await recordAudit(env.DB, {
     actor: 'system',

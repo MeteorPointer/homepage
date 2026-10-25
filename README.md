@@ -6,13 +6,13 @@
 
 Nuxt 4 + Nitro（`cloudflare_module`）+ Hono，跑在单个 Cloudflare Worker 上。
 
-| 层 | 用途 |
-|---|---|
-| Nuxt / Nitro | 页面渲染与路由 |
-| Hono | `/api/**` 全部业务接口 |
-| D1 | 关系数据（用户档案、工坊、反馈、审计） |
-| KV | 会话、JWKS 缓存、License 吊销名单 |
-| R2 | 上传文件 |
+| 层           | 用途                                   |
+| ------------ | -------------------------------------- |
+| Nuxt / Nitro | 页面渲染与路由                         |
+| Hono         | `/api/**` 全部业务接口                 |
+| D1           | 关系数据（用户档案、工坊、反馈、审计） |
+| KV           | 会话、JWKS 缓存、软限流                |
+| R2           | 上传文件                               |
 
 身份认证由 [Prism](https://github.com/siiway/prism) 提供，官网不存任何凭据。
 
@@ -40,15 +40,15 @@ pnpm dev
 
 ## 常用命令
 
-| 命令 | 说明 |
-|---|---|
-| `pnpm dev` | 开发服务器（含 D1/KV/R2 本地模拟） |
-| `pnpm build` | 构建到 `.output/` |
-| `pnpm preview` | 用 wrangler 跑构建产物 |
-| `pnpm deploy` | 构建并部署 |
-| `pnpm lint` / `lint:fix` | ESLint |
-| `pnpm typecheck` | 类型检查 |
-| `pnpm db:migrate:local` / `:remote` | 应用 D1 迁移 |
+| 命令                                | 说明                               |
+| ----------------------------------- | ---------------------------------- |
+| `pnpm dev`                          | 开发服务器（含 D1/KV/R2 本地模拟） |
+| `pnpm build`                        | 构建到 `.output/`                  |
+| `pnpm preview`                      | 用 wrangler 跑构建产物             |
+| `pnpm deploy`                       | 构建并部署                         |
+| `pnpm lint` / `lint:fix`            | ESLint                             |
+| `pnpm typecheck`                    | 类型检查                           |
+| `pnpm db:migrate:local` / `:remote` | 应用 D1 迁移                       |
 
 ## 目录
 
@@ -71,30 +71,33 @@ schema 只通过 `migrations/` 下的有序文件演进，**不在请求路径�
 ## 文档
 
 - [部署](docs/deployment.md) —— 从零上线的完整步骤与验证清单
-- [模组授权设计](docs/mod-authorization.md)
+- [模组设备码授权 v2](docs/mod-device-authorization.md)
+- [旧 token 迁移参考](docs/mod-authorization.md)
 
 ## 进度
 
-| 里程碑 | 内容 | 状态 |
-|---|---|---|
-| M0 | 脚手架、CI、迁移骨架 | ✅ |
-| M1 | Prism 登录链路 | ✅ 代码完成，等配置值 |
-| M2 | 前台：首页 / 工坊 / 画廊 / 开发者 / 个人页 / 反馈 | ✅ |
-| M3 | 管理后台 | ✅ |
-| M4 | 模组授权 + 审计 webhook | ✅ |
-| M5 | 切换上线 | 待部署 |
+| 里程碑 | 内容                                              | 状态                  |
+| ------ | ------------------------------------------------- | --------------------- |
+| M0     | 脚手架、CI、迁移骨架                              | ✅                    |
+| M1     | Prism 登录链路                                    | ✅ 代码完成，等配置值 |
+| M2     | 前台：首页 / 工坊 / 画廊 / 开发者 / 个人页 / 反馈 | ✅                    |
+| M3     | 管理后台                                          | ✅                    |
+| M4     | 模组授权 + 审计 webhook                           | ✅                    |
+| M5     | 切换上线                                          | 待部署                |
 
 ### 上线前需要的配置
 
 线上跑起来还差这些值（填进 `wrangler.toml` 与 secret）：
 
-| 项 | 来源 |
-|---|---|
-| `database_id` / KV id | `wrangler d1 create` / `kv namespace create` |
-| `PRISM_ISSUER` / `PRISM_CLIENT_ID` / `PRISM_TEAM_ID` | Prism 实例运营方 |
-| `PRISM_CLIENT_SECRET` | 同上，用 `wrangler secret put` |
-| `MOD_LICENSE_PRIVATE_KEY` | 自行生成 RSA 密钥对，公钥内置模组 |
-| `WEBHOOK_SECRET` | 自定，同时配到 Prism 的团队 webhook header |
+| 项                                                   | 来源                                                                 |
+| ---------------------------------------------------- | -------------------------------------------------------------------- |
+| `database_id` / KV id                                | `wrangler d1 create` / `kv namespace create`                         |
+| `PRISM_ISSUER` / `PRISM_CLIENT_ID` / `PRISM_TEAM_ID` | Prism 实例运营方                                                     |
+| `PRISM_CLIENT_SECRET`                                | 同上，用 `wrangler secret put`                                       |
+| `MOD_LICENSE_PRIVATE_KEY`                            | RSA License 签名私钥                                                 |
+| `MOD_LICENSE_KEY_ID`                                 | License 签名密钥标识，默认 `nsuk-rs256-1`                            |
+| `PRISM_TEAM_READ_TOKEN`                              | `team:<teamId>:member:read` 团队只读令牌，用于设备续期时复核赞助资格 |
+| `WEBHOOK_SECRET`                                     | 自定，同时配到 Prism 的团队 webhook header                           |
 
 **官网应用必须创建在 NSUK 团队名下** —— 通过团队邀请链接注册的受限账号只能授权
 来源团队及其后代拥有的应用，建在个人名下会导致这批用户在授权阶段被静默拒绝。

@@ -2,5 +2,7 @@
 # 线上用 wrangler secret put 写入，不要提交任何真实值。
 
 PRISM_CLIENT_SECRET=""
+PRISM_TEAM_READ_TOKEN=""
 MOD_LICENSE_PRIVATE_KEY=""
+MOD_LICENSE_KEY_ID="nsuk-rs256-1"
 WEBHOOK_SECRET=""

@@ -29,12 +29,12 @@ wrangler 支持按 binding 定位，所以改库名不需要同步 `package.json
 建在个人名下，这批人在 `/authorize` 阶段直接被拒，而且**没有任何面向用户的报错**，
 只会表现为登录点了没反应。
 
-| 项 | 值 |
-|---|---|
-| 客户端类型 | 机密（不勾「公共客户端」） |
-| 重定向 URI | `https://<官网域名>/api/auth/callback` |
+| 项             | 值                                                    |
+| -------------- | ----------------------------------------------------- |
+| 客户端类型     | 机密（不勾「公共客户端」）                            |
+| 重定向 URI     | `https://<官网域名>/api/auth/callback`                |
 | 追加重定向 URI | `http://127.0.0.1:3000/api/auth/callback`（本地开发） |
-| allowed_scopes | `openid` `profile` `email` `offline_access` |
+| allowed_scopes | `openid` `profile` `email` `offline_access`           |
 
 `teams:read` 在创建时直接勾上即可。
 
@@ -54,12 +54,12 @@ P1（应用预绑定团队的窄 scope）落地前没有更窄的选择 —— �
 
 在 NSUK 团队开启 `enable_groups`，创建这些 slug（**创建后不可改**）：
 
-| slug | 对应角色 | level |
-|---|---|---|
-| `sponsor` | 赞助者 | 1 |
-| `staff` | 客服 | 2 |
-| `developer` | 开发者 | 3 |
-| `admin` | 管理员 | 4 |
+| slug        | 对应角色 | level |
+| ----------- | -------- | ----- |
+| `sponsor`   | 赞助者   | 1     |
+| `staff`     | 客服     | 2     |
+| `developer` | 开发者   | 3     |
+| `admin`     | 管理员   | 4     |
 
 没有任何 group 的成员是 `guest`（level 0），这是正常状态而非异常。
 
@@ -85,14 +85,14 @@ P1（应用预绑定团队的窄 scope）落地前没有更窄的选择 —— �
 
 - 订阅事件（事件名以 Prism `worker/lib/audit.ts` 为准）：
 
-| 事件 | 不订会怎样 |
-|---|---|
-| `team.member.groups_change` | 身份组增删完全感知不到 |
-| `team.member.remove` | 被踢出团队的人不掉权限 |
-| `team.member.leave` | **主动退团**的人不掉权限（与 remove 是两个事件） |
-| `team.group.delete` | 身份组定义被删时无任何通知 |
-| `team.member.account_deleted` | 注销的账号在本站仍显示为正常用户 |
-| `admin.team.dissolve_started` | 团队进入解散流程时没有告警 |
+| 事件                          | 不订会怎样                                       |
+| ----------------------------- | ------------------------------------------------ |
+| `team.member.groups_change`   | 身份组增删完全感知不到                           |
+| `team.member.remove`          | 被踢出团队的人不掉权限                           |
+| `team.member.leave`           | **主动退团**的人不掉权限（与 remove 是两个事件） |
+| `team.group.delete`           | 身份组定义被删时无任何通知                       |
+| `team.member.account_deleted` | 注销的账号在本站仍显示为正常用户                 |
+| `admin.team.dissolve_started` | 团队进入解散流程时没有告警                       |
 
 用 glob `team.*` 一次订完更省事，未识别的事件本站会直接忽略。
 
@@ -106,11 +106,11 @@ P1（应用预绑定团队的窄 scope）落地前没有更窄的选择 —— �
 
 以下三项在 Prism 侧未落地时，本站的行为：
 
-| 依赖 | 未落地时 | 影响 |
-|---|---|---|
-| P1 应用预绑定团队的窄 scope | 用 `teams:read` | 属过度授权，ID token 会带上用户全部团队的 membership claim。本站只读 `groups_in_team_<NSUK>`，其余一概忽略 |
-| `/join?continue=` 跨域回跳 | **当前不支持跨域** | 见下 |
-| 账号删除审计事件 | 已按现有事件名订阅 | 若事件名变更，本站落到 `unhandled_event` 分支并返回 200，不会报错；注销的用户要到下次静默复查才被标记 |
+| 依赖                        | 未落地时           | 影响                                                                                                       |
+| --------------------------- | ------------------ | ---------------------------------------------------------------------------------------------------------- |
+| P1 应用预绑定团队的窄 scope | 用 `teams:read`    | 属过度授权，ID token 会带上用户全部团队的 membership claim。本站只读 `groups_in_team_<NSUK>`，其余一概忽略 |
+| `/join?continue=` 跨域回跳  | **当前不支持跨域** | 见下                                                                                                       |
+| 账号删除审计事件            | 已按现有事件名订阅 | 若事件名变更，本站落到 `unhandled_event` 分支并返回 200，不会报错；注销的用户要到下次静默复查才被标记      |
 
 三项都不阻塞上线。
 
@@ -143,11 +143,12 @@ console.log(privateKey.replace(/-----[^-]+-----/g,'').replace(/\s+/g,''));
 "
 ```
 
-输出的单行 base64 就是 `MOD_LICENSE_PRIVATE_KEY` 的值；`license-public.pem`
-交给模组开发者内置进 jar。**私钥不要提交到任何仓库。**
+输出的单行 base64 就是 `MOD_LICENSE_PRIVATE_KEY` 的值。服务端只会从私钥导出并返回
+公开 JWK；模组在 HTTPS 配对/续期响应中取得并缓存，可另外把 `license-public.pem`
+作为初始信任材料内置。**私钥不要提交到任何仓库。**
 
-密钥轮换意味着所有已签发的 License 立刻失效，且旧版模组无法验证新 License ——
-只能随模组版本一起换。
+轮换时同时修改 `MOD_LICENSE_KEY_ID`。已缓存旧公钥的模组可继续验证旧 License 到
+`exp`，下一次成功续期会取得新 `kid` 与公开 JWK。
 
 ## 四、写入配置
 
@@ -159,12 +160,14 @@ PRISM_ISSUER = "https://<prism 域名>"
 PRISM_CLIENT_ID = "<Client ID>"
 PRISM_TEAM_ID   = "<NSUK 团队 ID>"
 PRISM_JOIN_URL  = "https://<prism 域名>/join/<团队ID>?continue=https://<官网域名>/"
+MOD_LICENSE_KEY_ID = "nsuk-rs256-1"
 ```
 
 secrets：
 
 ```bash
 wrangler secret put PRISM_CLIENT_SECRET
+wrangler secret put PRISM_TEAM_READ_TOKEN
 wrangler secret put MOD_LICENSE_PRIVATE_KEY
 wrangler secret put WEBHOOK_SECRET
 ```
@@ -184,7 +187,9 @@ cp .dev.vars.example .dev.vars
 
 ```
 PRISM_CLIENT_SECRET="…"
+PRISM_TEAM_READ_TOKEN="…"
 MOD_LICENSE_PRIVATE_KEY="…"
+MOD_LICENSE_KEY_ID="nsuk-rs256-1"
 WEBHOOK_SECRET="…"
 PRISM_ISSUER="https://<prism 域名>"
 PRISM_CLIENT_ID="…"
@@ -205,13 +210,14 @@ pnpm dev
 - [ ] 能跳到 Prism 授权页并跳回来
 - [ ] 账号中心显示的身份组与 Prism 里给你打的组一致
 - [ ] 终端日志**没有** `没有任何 in_team_* claim`
-- [ ] 给自己打上 `sponsor` 组 → 重新登录 → 模组授权区出现，能生成令牌
-- [ ] 拿生成的令牌调一次 validate，应返回 License：
+- [ ] 给自己打上 `sponsor` 组 → 重新登录 → 模组授权区出现设备管理面板
+- [ ] 在模组内开始绑定，官网 `/mod/pair` 能显示同一个短码和设备名称
+- [ ] 确认后模组轮询能取得带 `kid` 的 License v2 与公开 JWK
 
 ```bash
-curl -X POST http://localhost:3000/api/mod/validate \
+curl -X POST http://localhost:3000/api/mod/pair/start \
   -H "Content-Type: application/json" \
-  -d '{"token":"<刚生成的令牌>","fingerprint":"local-test"}'
+  -d '{"mod_id":"simukraft","install_id":"11111111-1111-4111-8111-111111111111","device_name":"本地测试","credential_hash":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}'
 ```
 
 webhook 本地收不到（Prism 打不到 localhost），留到线上验。
@@ -239,13 +245,13 @@ pnpm db:migrate:remote
 
 Dashboard → Workers → 该 Worker → Settings → Build：
 
-| 项 | 值 |
-|---|---|
-| Git repository | `New-Sim-U-Kraft/homepage` |
-| Branch | `refactor/homepage`（正式切换后改 `main`） |
-| Build command | `pnpm build` |
-| Deploy command | `npx wrangler deploy` |
-| Root directory | 留空 |
+| 项             | 值                                         |
+| -------------- | ------------------------------------------ |
+| Git repository | `New-Sim-U-Kraft/homepage`                 |
+| Branch         | `refactor/homepage`（正式切换后改 `main`） |
+| Build command  | `pnpm build`                               |
+| Deploy command | `npx wrangler deploy`                      |
+| Root directory | 留空                                       |
 
 仓库有 `pnpm-lock.yaml` 与 `packageManager` 字段，Cloudflare 会自动选用 pnpm。
 
@@ -290,10 +296,10 @@ curl https://<域名>/uploads/workshop/<任一id>/files/<任一文件>
 
 - [ ] `/api/_ping` 三个绑定为 true，`roles: 5`
 - [ ] 能用 Prism 账号登录，账号中心显示正确的身份组
-- [ ] 赞助者能生成模组令牌，非赞助者看到「面向赞助者开放」提示
-- [ ] 模组 `validate` 返回 License，用公钥能验签通过
-- [ ] 在 Prism 移除某人的 `sponsor` 组，几秒内其 License 被吊销、模组 `validate`
-      返回 `NOT_SPONSOR`
+- [ ] 赞助者能确认设备绑定，非赞助者无法确认
+- [ ] 模组取得 License v2，用返回的 JWK 能验签并核对 `install_id`、`refresh_after`、`exp`
+- [ ] 在 Prism 移除某人的 `sponsor` 组后，下一次后台核验明确拒绝续期；已有离线
+      License 最迟在签名 `exp` 失效
 - [ ] 工坊结构文件的直链返回 403，作品页下载按钮只指向站外链接
 - [ ] 审核员能通过后台下载结构文件核对，且 `audit_log` 有记录
 

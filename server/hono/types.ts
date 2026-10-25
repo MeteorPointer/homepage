@@ -15,9 +15,13 @@ export interface Env {
   PRISM_TEAM_ID?: string
   /** 团队邀请链接注册入口，形如 https://<prism>/join/<teamId> */
   PRISM_JOIN_URL?: string
+  /** License JWT header.kid；轮换密钥时同步更新 */
+  MOD_LICENSE_KEY_ID?: string
 
   // ─── secrets ───
   PRISM_CLIENT_SECRET?: string
+  /** 拥有 team:<teamId>:member:read 的长期服务令牌，用于模组续期时复核赞助资格 */
+  PRISM_TEAM_READ_TOKEN?: string
   MOD_LICENSE_PRIVATE_KEY?: string
   WEBHOOK_SECRET?: string
 }

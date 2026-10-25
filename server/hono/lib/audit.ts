@@ -35,6 +35,8 @@ export const AUDIT = {
   MOD_TOKEN_GENERATE: 'mod.token.generate',
   MOD_TOKEN_RESET: 'mod.token.reset',
   MOD_DEVICE_BIND: 'mod.device.bind',
+  MOD_DEVICE_REVOKE: 'mod.device.revoke',
+  MOD_PAIR_APPROVE: 'mod.pair.approve',
   MOD_LICENSE_ISSUE: 'mod.license.issue',
   MOD_LICENSE_REVOKE: 'mod.license.revoke',
   MOD_DEVICE_ANOMALY: 'mod.device.anomaly',

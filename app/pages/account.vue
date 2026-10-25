@@ -20,13 +20,17 @@ const ERROR_TEXT: Record<string, string> = {
 const profile = reactive({ avatar: '', intro: '', cover: '' })
 const savingProfile = ref(false)
 const toast = useToast()
-const { data: profileData } = await useFetch<{ profile: typeof profile }>("/api/auth/profile", {
+const { data: profileData } = await useFetch<{ profile: typeof profile }>('/api/auth/profile', {
   server: false,
   immediate: !!user.value,
 })
-watch(profileData, (data) => {
-  if (data?.profile) Object.assign(profile, data.profile)
-}, { immediate: true })
+watch(
+  profileData,
+  (data) => {
+    if (data?.profile) Object.assign(profile, data.profile)
+  },
+  { immediate: true },
+)
 
 async function saveProfile() {
   savingProfile.value = true
@@ -90,11 +94,18 @@ async function saveProfile() {
 
       <section class="mt-8">
         <h2 class="text-lg font-semibold">公开资料</h2>
-        <p class="mt-1 text-sm text-(--ui-text-muted)">用户名和身份组由 SiiWay Team 管理；这里只维护本站展示资料。</p>
+        <p class="mt-1 text-sm text-(--ui-text-muted)">
+          用户名和身份组由 SiiWay Team 管理；这里只维护本站展示资料。
+        </p>
         <div class="mt-4 space-y-3">
           <UInput v-model="profile.avatar" placeholder="头像地址（HTTPS，可选）" />
           <UInput v-model="profile.cover" placeholder="封面地址（HTTPS，可选）" />
-          <UTextarea v-model="profile.intro" :rows="3" :maxlength="1000" placeholder="个人简介（可选）" />
+          <UTextarea
+            v-model="profile.intro"
+            :rows="3"
+            :maxlength="1000"
+            placeholder="个人简介（可选）"
+          />
           <UButton size="sm" :loading="savingProfile" @click="saveProfile">保存资料</UButton>
         </div>
       </section>
@@ -123,13 +134,13 @@ async function saveProfile() {
       <section class="mt-10">
         <h2 class="text-lg font-semibold">模组授权</h2>
         <p class="mt-1 mb-4 text-sm text-(--ui-text-muted)">
-          赞助者及以上可生成令牌，填入模组后即可使用。
+          赞助者及以上可通过游戏内短码绑定客户端，长期设备密钥不会显示在网页中。
         </p>
 
-        <ModTokenPanel v-if="level >= 1" />
+        <ModDevicePanel />
         <div
-          v-else
-          class="rounded-(--ui-radius) border border-dashed border-(--ui-border) p-6 text-sm text-(--ui-text-dimmed)"
+          v-if="level < 1"
+          class="mt-4 rounded-(--ui-radius) border border-dashed border-(--ui-border) p-6 text-sm text-(--ui-text-dimmed)"
         >
           模组授权面向赞助者及以上开放。
         </div>

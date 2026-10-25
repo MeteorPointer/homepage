@@ -3,7 +3,7 @@
 import { Hono } from 'hono'
 import type { AppBindings, Env } from './types'
 import { clientIp, rateLimit } from './lib/ratelimit'
-import modRoutes from './routes/mod'
+import modRoutes from './routes/modDevice'
 import authRoutes from './routes/auth'
 import publicRoutes from './routes/public'
 import workshopRoutes from './routes/workshop'
@@ -16,11 +16,7 @@ const app = new Hono<AppBindings>().basePath('/api')
 /** 屏蔽日志中的 secret 与邮箱 */
 function maskSecrets(input: unknown, env: Env | undefined): string {
   let out = String(input ?? '')
-  const keys: (keyof Env)[] = [
-    'PRISM_CLIENT_SECRET',
-    'MOD_LICENSE_PRIVATE_KEY',
-    'WEBHOOK_SECRET',
-  ]
+  const keys: (keyof Env)[] = ['PRISM_CLIENT_SECRET', 'MOD_LICENSE_PRIVATE_KEY', 'WEBHOOK_SECRET']
   for (const k of keys) {
     const v = env?.[k]
     if (typeof v === 'string' && v) out = out.split(v).join('***')

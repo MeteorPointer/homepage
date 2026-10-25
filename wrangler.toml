@@ -22,7 +22,7 @@ database_name = "nsuk-new"
 database_id = "2375ae81-0766-416d-8d6f-6ece1e5150a6"
 migrations_dir = "migrations"
 
-# ---- KV：会话、JWKS 缓存、License 吊销名单、验证码 ----
+# ---- KV：会话、JWKS 缓存与软限流 ----
 # 创建：wrangler kv namespace create KV
 [[kv_namespaces]]
 binding = "KV"
@@ -43,10 +43,13 @@ PRISM_ISSUER = "https://prism.siiway.org"
 PRISM_CLIENT_ID = "prism_89XkSWDmdCTIF8B-f435_Q"
 PRISM_TEAM_ID = "820a20b4adffb9ce4caae70bdcb71fb1"
 PRISM_JOIN_URL = "https://prism.siiway.org/join/820a20b4adffb9ce4caae70bdcb71fb1"
+MOD_LICENSE_KEY_ID = "nsuk-rs256-1"
 
 # ---- secrets（用命令写入，不入库）----
 # wrangler secret put PRISM_CLIENT_SECRET
+# wrangler secret put PRISM_TEAM_READ_TOKEN
 # wrangler secret put MOD_LICENSE_PRIVATE_KEY
+# MOD_LICENSE_KEY_ID 是非敏感 kid，可在 [vars] 中配置；默认 nsuk-rs256-1
 # wrangler secret put WEBHOOK_SECRET
 
 [[routes]]

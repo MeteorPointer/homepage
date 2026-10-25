@@ -67,7 +67,14 @@ export async function roleFromClaims(
   claims: IdTokenClaims,
   teamId: string,
 ): Promise<RoleKey> {
-  const slugs = groupsOfTeam(claims, teamId)
+  return roleFromGroupSlugs(db, groupsOfTeam(claims, teamId))
+}
+
+/** 将 Prism 团队成员接口返回的 group slugs 映射为本站最高角色。 */
+export async function roleFromGroupSlugs(
+  db: D1Database,
+  slugs: readonly string[],
+): Promise<RoleKey> {
   if (slugs.length === 0) return 'guest'
 
   const levels = await levelMap(db)
