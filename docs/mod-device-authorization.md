@@ -40,7 +40,7 @@ JWT header：`alg=RS256`、`typ=JWT`、`kid=<MOD_LICENSE_KEY_ID>`。
 ## 吊销和换绑
 
 - 账号页“紧急吊销”立即禁止旧设备再次续期，不受冷却限制。
-- 绑定新设备继续受 `rebind_cooldown_hours` 限制。
+- 绑定新设备继续受 `rebind_cooldown_hours` 限制；`admin` 账号为方便授权链路测试而免除该冷却。
 - 纯离线 License 无法被远程瞬时删除；联网收到明确拒绝时立即降级，否则最迟在 `exp` 失效。
 - Prism 降级会吊销 `mod_devices` 凭证并提高 `credential_version`。
 

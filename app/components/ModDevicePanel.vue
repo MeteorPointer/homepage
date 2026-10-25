@@ -10,6 +10,7 @@ interface ModDevice {
   revokedAt: string | null
   revokeReason: string | null
   cooldownHours: number
+  cooldownExempt: boolean
   remainingCooldownHours: number
 }
 
@@ -109,9 +110,11 @@ async function revokeLegacy() {
         <dt>换绑冷却</dt>
         <dd>
           {{
-            device.remainingCooldownHours > 0
-              ? `还需 ${device.remainingCooldownHours} 小时`
-              : '可换绑'
+            device.cooldownExempt
+              ? '管理员免冷却'
+              : device.remainingCooldownHours > 0
+                ? `还需 ${device.remainingCooldownHours} 小时`
+                : '可换绑'
           }}
         </dd>
       </dl>
@@ -140,8 +143,14 @@ async function revokeLegacy() {
     </div>
 
     <p class="text-xs text-(--ui-text-dimmed)">
-      紧急吊销立即停止该设备继续续期，不受冷却限制；绑定另一台设备仍需遵守
-      {{ device.cooldownHours }} 小时换绑冷却。离线 License 会在签名截止时间到达后失效。
+      <template v-if="device.cooldownExempt">
+        管理员账号为方便测试，不受设备换绑冷却限制。
+      </template>
+      <template v-else>
+        紧急吊销立即停止该设备继续续期，不受冷却限制；绑定另一台设备仍需遵守
+        {{ device.cooldownHours }} 小时换绑冷却。
+      </template>
+      离线 License 会在签名截止时间到达后失效。
     </p>
   </div>
 </template>

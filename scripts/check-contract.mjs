@@ -17,6 +17,9 @@ const [
   migration,
   deviceIdentityMigration,
   license,
+  authComposable,
+  accountPage,
+  roles,
 ] = await Promise.all([
   read('.dev.vars.example'),
   read('server/hono/routes/workshop.ts'),
@@ -29,6 +32,9 @@ const [
   read('migrations/0006_mod_device_authorization.sql'),
   read('migrations/0007_mod_device_minecraft_name.sql'),
   read('server/hono/lib/license.ts'),
+  read('app/composables/useAuth.ts'),
+  read('app/pages/account.vue'),
+  read('server/hono/lib/roles.ts'),
 ])
 
 assert(
@@ -51,6 +57,14 @@ assert(
   auth.includes("target.searchParams.delete('error')"),
   'successful login redirects must drop stale OAuth error parameters',
 )
+assert(
+  authComposable.includes("url.searchParams.delete('error')"),
+  'client login redirects must drop stale OAuth error parameters',
+)
+assert(
+  accountPage.includes("if (user.value) return ''"),
+  'authenticated account pages must hide stale OAuth errors',
+)
 assert(minePage.includes('/api/workshop/mine/list'), 'my submissions UI must remain connected')
 assert(modDevice.includes('/pair/start'), 'device pairing start endpoint must remain available')
 assert(modDevice.includes('/pair/poll'), 'device pairing poll endpoint must remain available')
@@ -59,6 +73,22 @@ assert(
   'device license refresh endpoint must remain available',
 )
 assert(modDevice.includes('/devices/revoke'), 'emergency device revocation must remain available')
+assert(
+  roles.includes("normalizeRoleKey(roleKey) === 'admin'"),
+  'only the admin role may bypass the device rebind cooldown',
+)
+assert(
+  modDevice.match(/isRebindCooldownExempt/g)?.length === 4,
+  'admin cooldown exemption must cover confirm, poll, and device status',
+)
+assert(
+  modDevice.includes('(? = 1 OR mod_devices.bound_at <= ?)'),
+  'the atomic device upsert must honor the admin cooldown exemption',
+)
+assert(
+  devicePanel.includes('管理员免冷却'),
+  'the device panel must disclose the admin cooldown exemption',
+)
 assert(
   !devicePanel.includes('token.token'),
   'account UI must never display a long-lived device credential',

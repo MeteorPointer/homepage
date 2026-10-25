@@ -4,7 +4,7 @@ import { Hono } from 'hono'
 import type { Context } from 'hono'
 import type { AppBindings } from '../types'
 import { requireAuth, requireLevel } from '../lib/rbac'
-import { MOD_MIN_LEVEL } from '../lib/roles'
+import { isRebindCooldownExempt, MOD_MIN_LEVEL } from '../lib/roles'
 import { getConfig, nowIso } from '../lib/db'
 import { clientIp, rateLimit } from '../lib/ratelimit'
 import { AUDIT, recordAudit } from '../lib/audit'
@@ -278,8 +278,9 @@ r.post('/pair/confirm', requireLevel(MOD_MIN_LEVEL), async (c) => {
     .bind(user.sub)
     .first<Pick<DeviceRow, 'credential_hash' | 'bound_at'>>()
   const hours = await cooldownHours(c.env.DB)
+  const cooldownExempt = isRebindCooldownExempt(user.roleKey)
   const remaining =
-    existing && existing.credential_hash !== row.credential_hash
+    !cooldownExempt && existing && existing.credential_hash !== row.credential_hash
       ? remainingCooldown(existing.bound_at, hours)
       : 0
   if (remaining > 0) {
@@ -364,6 +365,7 @@ r.post('/pair/poll', async (c) => {
 
   const now = nowIso()
   const hours = await cooldownHours(c.env.DB)
+  const cooldownExempt = isRebindCooldownExempt(user.role_key)
   const cutoff = new Date(Date.now() - hours * 3600_000).toISOString()
   let bound
   try {
@@ -393,7 +395,7 @@ r.post('/pair/poll', async (c) => {
        WHERE (mod_devices.credential_hash = excluded.credential_hash
               AND mod_devices.revoked_at IS NULL)
           OR (mod_devices.credential_hash != excluded.credential_hash
-              AND mod_devices.bound_at <= ?)`,
+              AND (? = 1 OR mod_devices.bound_at <= ?))`,
     )
       .bind(
         crypto.randomUUID(),
@@ -404,6 +406,7 @@ r.post('/pair/poll', async (c) => {
         row.minecraft_name,
         now,
         now,
+        cooldownExempt ? 1 : 0,
         cutoff,
       )
       .run()
@@ -521,6 +524,7 @@ r.get('/devices', requireAuth(), async (c) => {
     .bind(user.sub)
     .first<Omit<DeviceRow, 'sub' | 'credential_hash'>>()
   const hours = await cooldownHours(c.env.DB)
+  const cooldownExempt = isRebindCooldownExempt(user.roleKey)
   const legacy = await c.env.DB.prepare(
     'SELECT 1 AS active FROM mod_tokens WHERE sub = ? AND revoked_at IS NULL',
   )
@@ -541,7 +545,8 @@ r.get('/devices', requireAuth(), async (c) => {
           revokedAt: device.revoked_at,
           revokeReason: device.revoke_reason,
           cooldownHours: hours,
-          remainingCooldownHours: remainingCooldown(device.bound_at, hours),
+          cooldownExempt,
+          remainingCooldownHours: cooldownExempt ? 0 : remainingCooldown(device.bound_at, hours),
         }
       : null,
   })

@@ -40,6 +40,11 @@ export function normalizeRoleKey(v: unknown): RoleKey {
   return (ROLE_KEYS as readonly string[]).includes(r) ? (r as RoleKey) : 'guest'
 }
 
+/** 管理员用于授权链路测试时不受设备换绑冷却限制。 */
+export function isRebindCooldownExempt(roleKey: unknown): boolean {
+  return normalizeRoleKey(roleKey) === 'admin'
+}
+
 export function effectivePerms(user: Pick<SessionUser, 'permissions'> | null): 'ALL' | Set<string> {
   const p = user?.permissions ?? []
   return p.includes('*') ? 'ALL' : new Set(p)
