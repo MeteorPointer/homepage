@@ -8,15 +8,16 @@
 
 - 保护官方构建中的赞助体验，不承诺客户端侧不可绕过 DRM。
 - Minecraft 启动和世界加载不等待网络；授权失败只影响赞助权益。
-- 不采集 MAC、硬盘号、`user.home` 等硬件或目录特征，只使用随机 `install_id`。
+- 不采集 MAC、硬盘号、`user.home` 等硬件或目录特征；授权判定只使用随机 `install_id`。当前电脑名称和 Minecraft 账号名仅在玩家主动发起绑定时提交，用于确认页和设备管理页展示，不参与判权。
 - 长期 `device_token` 由模组本地生成，官网仅保存 SHA-256 哈希。
+- Windows 客户端使用 DPAPI CurrentUser 加密 `device_token`、License 和配对凭证，并将授权目录 ACL 收紧为仅当前用户可访问；复制授权文件到另一台电脑或另一个 Windows 用户后无法解密。
 - License 是短期 RS256 JWT；`refresh_after` 后后台续期，`exp` 是包含离线宽限的硬截止时间。
 
 ## 配对流程
 
-1. 模组生成 256-bit `device_token`，向 `POST /api/mod/pair/start` 只提交其哈希、随机安装 ID 和设备名称。
+1. 模组生成 256-bit `device_token`，向 `POST /api/mod/pair/start` 提交其哈希、随机安装 ID、当前电脑名称和本次 Minecraft 会话的账号名。
 2. 官网返回高熵 `device_code`、短 `user_code`、绑定页地址、有效期和轮询间隔。
-3. 用户在 `/mod/pair` 登录并核对短码与设备名称，再显式批准或拒绝。
+3. 用户在 `/mod/pair` 登录并核对短码、电脑名称与 Minecraft 账号名，再显式批准或拒绝。
 4. 模组通过 `POST /api/mod/pair/poll` 轮询。批准后官网写入设备记录并返回 License 与公开 JWK。
 5. 模组已持有自己生成的 `device_token`，因此无需由官网回传长期秘密；配对响应丢失后仍可调用续期端点恢复。
 
@@ -48,6 +49,9 @@ JWT header：`alg=RS256`、`typ=JWT`、`kid=<MOD_LICENSE_KEY_ID>`。
 - D1：配对状态、设备凭证哈希、硬确认次数与授权版本。
 - KV：会话、OIDC/JWKS 缓存和削峰型软限流。
 - KV 最终一致，不能承担配对消费、凭证轮换或硬吊销状态。
+- 客户端 `auth.properties` 使用版本化格式。Windows 使用 DPAPI CurrentUser；Linux 使用本机 `machine-id` + 当前系统用户派生的 AES-GCM 密钥；macOS 使用 `IOPlatformUUID` + 当前系统用户派生的 AES-GCM 密钥。所有平台同时收紧文件权限，旧明文文件首次成功读取后自动迁移。
+- Linux/macOS 的系统标识只在本机参与密钥派生，绝不上传官网；无法读取系统标识时拒绝持久化长期凭证，而不是降级成明文。
+- 不使用主板 UUID、MAC 或磁盘序列作为硬件指纹；它们并非不可变，也不是可靠的物理设备证明。
 
 ## 客户端入口
 

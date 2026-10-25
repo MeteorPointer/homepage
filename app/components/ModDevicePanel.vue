@@ -3,6 +3,7 @@ interface ModDevice {
   id: string
   installId: string
   deviceName: string
+  minecraftName: string
   credentialVersion: number
   boundAt: string
   lastSeenAt: string | null
@@ -99,6 +100,8 @@ async function revokeLegacy() {
       <dl class="mt-3 grid grid-cols-2 gap-y-1 text-(--ui-text-muted)">
         <dt>安装标识</dt>
         <dd class="truncate font-mono text-xs">{{ device.installId }}</dd>
+        <dt>Minecraft 账号</dt>
+        <dd>{{ device.minecraftName || '未提供' }}</dd>
         <dt>绑定时间</dt>
         <dd>{{ fmt(device.boundAt) }}</dd>
         <dt>最近续期</dt>

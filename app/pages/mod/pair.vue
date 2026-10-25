@@ -4,6 +4,7 @@ useHead({ title: '绑定游戏客户端 · NSUK' })
 interface PairInfo {
   user_code: string
   device_name: string
+  minecraft_name: string
   status: 'pending' | 'approved' | 'denied' | 'consumed' | 'expired'
   expires_at: string
 }
@@ -99,6 +100,8 @@ onMounted(() => {
       <dl class="mt-4 grid grid-cols-2 gap-y-2 text-sm">
         <dt class="text-(--ui-text-muted)">设备名称</dt>
         <dd>{{ info.device_name }}</dd>
+        <dt class="text-(--ui-text-muted)">Minecraft 账号</dt>
+        <dd>{{ info.minecraft_name || '未提供' }}</dd>
         <dt class="text-(--ui-text-muted)">过期时间</dt>
         <dd>{{ fmt(info.expires_at) }}</dd>
       </dl>

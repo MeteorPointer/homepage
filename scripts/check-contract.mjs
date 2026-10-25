@@ -15,6 +15,7 @@ const [
   devicePanel,
   pairPage,
   migration,
+  deviceIdentityMigration,
   license,
 ] = await Promise.all([
   read('.dev.vars.example'),
@@ -26,6 +27,7 @@ const [
   read('app/components/ModDevicePanel.vue'),
   read('app/pages/mod/pair.vue'),
   read('migrations/0006_mod_device_authorization.sql'),
+  read('migrations/0007_mod_device_minecraft_name.sql'),
   read('server/hono/lib/license.ts'),
 ])
 
@@ -45,6 +47,10 @@ assert(!workshop.includes('/:id/preview'), 'NBT preview endpoint must stay remov
 assert(workshop.includes('/mine/list'), 'my submissions endpoint must remain available')
 assert(admin.includes('/workshop/:id/file/:index'), 'reviewer file endpoint must remain available')
 assert(auth.includes('/profile'), 'profile endpoint must remain available')
+assert(
+  auth.includes("target.searchParams.delete('error')"),
+  'successful login redirects must drop stale OAuth error parameters',
+)
 assert(minePage.includes('/api/workshop/mine/list'), 'my submissions UI must remain connected')
 assert(modDevice.includes('/pair/start'), 'device pairing start endpoint must remain available')
 assert(modDevice.includes('/pair/poll'), 'device pairing poll endpoint must remain available')
@@ -60,6 +66,15 @@ assert(
 assert(pairPage.includes('/api/mod/pair/confirm'), 'pair confirmation page must remain connected')
 assert(migration.includes('credential_hash'), 'device credentials must be stored by hash')
 assert(migration.includes('UNIQUE COLLATE NOCASE'), 'pairing user codes must remain unique')
+assert(
+  deviceIdentityMigration.match(/ADD COLUMN minecraft_name/g)?.length === 2,
+  'Minecraft account name must be stored on pairings and bound devices',
+)
+assert(modDevice.includes('minecraft_name'), 'device APIs must carry the Minecraft account name')
+assert(
+  pairPage.includes('Minecraft 账号'),
+  'pair confirmation must show the Minecraft account name',
+)
 assert(license.includes('kid: keyId(env)'), 'License JWT must include kid for key rotation')
 
 console.log('contract checks passed')

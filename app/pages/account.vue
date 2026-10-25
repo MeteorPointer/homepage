@@ -6,6 +6,8 @@ const route = useRoute()
 
 /** 回调失败时会带 ?error= 回来 */
 const loginError = computed(() => {
+  // 账号已成功恢复时，地址栏里残留的上一次 OAuth 错误不应继续报警。
+  if (user.value) return ''
   const e = route.query.error
   return typeof e === 'string' ? e : ''
 })

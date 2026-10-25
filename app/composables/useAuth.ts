@@ -55,7 +55,15 @@ export function useAuth() {
   const needsJoin = computed(() => !!user.value && level.value === 0)
 
   function login(redirect?: string) {
-    const target = redirect ?? useRoute().fullPath
+    const requested = redirect ?? useRoute().fullPath
+    let target: string
+    try {
+      const url = new URL(requested, window.location.origin)
+      url.searchParams.delete('error')
+      target = `${url.pathname}${url.search}${url.hash}`
+    } catch {
+      target = '/'
+    }
     return navigateTo(`/api/auth/login?redirect=${encodeURIComponent(target)}`, {
       external: true,
     })

@@ -33,6 +33,7 @@ interface PairingRow {
   credential_hash: string
   install_id: string
   device_name: string
+  minecraft_name: string
   status: 'pending' | 'approved' | 'denied' | 'consumed' | 'expired'
   confirmed_sub: string | null
   created_at: string
@@ -47,6 +48,7 @@ interface DeviceRow {
   credential_hash: string
   install_id: string
   device_name: string
+  minecraft_name: string
   credential_version: number
   bound_at: string
   last_seen_at: string | null
@@ -137,6 +139,7 @@ r.post('/pair/start', async (c) => {
       mod_id?: string
       install_id?: string
       device_name?: string
+      minecraft_name?: string
       credential_hash?: string
     }>()
     .catch(
@@ -144,12 +147,22 @@ r.post('/pair/start', async (c) => {
         mod_id?: string
         install_id?: string
         device_name?: string
+        minecraft_name?: string
         credential_hash?: string
       } => ({}),
     )
   const installId = String(body.install_id ?? '').trim()
   const credentialHash = String(body.credential_hash ?? '').trim()
   const deviceName = String(body.device_name ?? 'Minecraft 客户端')
+    .trim()
+    .slice(0, 64)
+  const minecraftName = String(body.minecraft_name ?? '')
+    .split('')
+    .filter((character) => {
+      const code = character.charCodeAt(0)
+      return code >= 32 && code !== 127
+    })
+    .join('')
     .trim()
     .slice(0, 64)
 
@@ -190,8 +203,8 @@ r.post('/pair/start', async (c) => {
     const inserted = await c.env.DB.prepare(
       `INSERT OR IGNORE INTO mod_pairings
         (id, device_code_hash, user_code, credential_hash, install_id, device_name,
-         status, created_at, expires_at)
-       VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
+         minecraft_name, status, created_at, expires_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
     )
       .bind(
         id,
@@ -200,6 +213,7 @@ r.post('/pair/start', async (c) => {
         credentialHash,
         installId,
         deviceName,
+        minecraftName,
         createdAt,
         expiresAt,
       )
@@ -233,6 +247,7 @@ r.post('/pair/info', async (c) => {
   return c.json({
     user_code: row.user_code,
     device_name: row.device_name,
+    minecraft_name: row.minecraft_name,
     status: pairingExpired(row) ? 'expired' : row.status,
     expires_at: row.expires_at,
   })
@@ -294,9 +309,17 @@ r.post('/pair/confirm', requireLevel(MOD_MIN_LEVEL), async (c) => {
     actor: user.sub,
     action: AUDIT.MOD_PAIR_APPROVE,
     target: row.id,
-    detail: { installId: row.install_id, deviceName: row.device_name },
+    detail: {
+      installId: row.install_id,
+      deviceName: row.device_name,
+      minecraftName: row.minecraft_name,
+    },
   })
-  return c.json({ ok: true, device_name: row.device_name })
+  return c.json({
+    ok: true,
+    device_name: row.device_name,
+    minecraft_name: row.minecraft_name,
+  })
 })
 
 r.post('/pair/poll', async (c) => {
@@ -346,13 +369,14 @@ r.post('/pair/poll', async (c) => {
   try {
     bound = await c.env.DB.prepare(
       `INSERT INTO mod_devices
-        (id, sub, credential_hash, install_id, device_name, credential_version,
+        (id, sub, credential_hash, install_id, device_name, minecraft_name, credential_version,
          bound_at, last_seen_at, revoked_at, revoke_reason)
-       VALUES (?, ?, ?, ?, ?, 1, ?, ?, NULL, NULL)
+       VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, NULL, NULL)
        ON CONFLICT(sub) DO UPDATE SET
          credential_hash = excluded.credential_hash,
          install_id = excluded.install_id,
          device_name = excluded.device_name,
+         minecraft_name = excluded.minecraft_name,
          credential_version = CASE
            WHEN mod_devices.credential_hash = excluded.credential_hash
              THEN mod_devices.credential_version
@@ -377,6 +401,7 @@ r.post('/pair/poll', async (c) => {
         row.credential_hash,
         row.install_id,
         row.device_name,
+        row.minecraft_name,
         now,
         now,
         cutoff,
@@ -416,7 +441,7 @@ r.post('/pair/poll', async (c) => {
       actor: user.sub,
       action: AUDIT.MOD_DEVICE_BIND,
       target: row.install_id,
-      detail: { deviceName: row.device_name },
+      detail: { deviceName: row.device_name, minecraftName: row.minecraft_name },
     })
   }
   return c.json({ ok: true, ...result })
@@ -489,7 +514,7 @@ r.get('/devices', requireAuth(), async (c) => {
   noStore(c)
   const user = c.get('user')!
   const device = await c.env.DB.prepare(
-    `SELECT id, install_id, device_name, credential_version, bound_at,
+    `SELECT id, install_id, device_name, minecraft_name, credential_version, bound_at,
             last_seen_at, revoked_at, revoke_reason
        FROM mod_devices WHERE sub = ?`,
   )
@@ -509,6 +534,7 @@ r.get('/devices', requireAuth(), async (c) => {
           id: device.id,
           installId: device.install_id,
           deviceName: device.device_name,
+          minecraftName: device.minecraft_name,
           credentialVersion: device.credential_version,
           boundAt: device.bound_at,
           lastSeenAt: device.last_seen_at,

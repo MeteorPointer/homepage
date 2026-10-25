@@ -16,12 +16,7 @@ import {
   revokeToken,
   verifyIdToken,
 } from '../lib/oidc'
-import {
-  SESSION_COOKIE,
-  createSession,
-  destroySession,
-  getSession,
-} from '../lib/session'
+import { SESSION_COOKIE, createSession, destroySession, getSession } from '../lib/session'
 import { roleFromClaims, upsertUserFromClaims } from '../lib/users'
 import { requireAuth, resolveUser } from '../lib/rbac'
 import { timingSafeEqual } from '../lib/crypto'
@@ -57,7 +52,16 @@ interface PendingAuth {
 function safeRedirect(input: string | undefined): string {
   if (!input) return '/'
   if (!input.startsWith('/') || input.startsWith('//')) return '/'
-  return input
+  try {
+    const base = new URL('https://local.invalid')
+    const target = new URL(input, base)
+    if (target.origin !== base.origin) return '/'
+    // OAuth 回调错误只描述上一次尝试，成功登录后绝不能继续携带。
+    target.searchParams.delete('error')
+    return `${target.pathname}${target.search}${target.hash}`
+  } catch {
+    return '/'
+  }
 }
 
 function redirectUriOf(env: AppBindings['Bindings']): string {
@@ -225,10 +229,19 @@ function profileUrl(value: unknown): string | null {
 /** 用户可维护本站资料；身份、用户名与角色仍完全由 Prism 管理。 */
 r.get('/profile', requireAuth(), async (c) => {
   const user = c.get('user')!
-  const profile = await c.env.DB.prepare('SELECT avatar_override, intro, cover FROM users WHERE sub = ?')
+  const profile = await c.env.DB.prepare(
+    'SELECT avatar_override, intro, cover FROM users WHERE sub = ?',
+  )
     .bind(user.sub)
     .first<{ avatar_override: string; intro: string; cover: string }>()
-  return c.json({ ok: true, profile: { avatar: profile?.avatar_override ?? '', intro: profile?.intro ?? '', cover: profile?.cover ?? '' } })
+  return c.json({
+    ok: true,
+    profile: {
+      avatar: profile?.avatar_override ?? '',
+      intro: profile?.intro ?? '',
+      cover: profile?.cover ?? '',
+    },
+  })
 })
 
 r.patch('/profile', requireAuth(), async (c) => {
@@ -238,9 +251,12 @@ r.patch('/profile', requireAuth(), async (c) => {
     .catch((): { avatar?: unknown; intro?: unknown; cover?: unknown } => ({}))
   const avatar = profileUrl(body.avatar)
   const cover = profileUrl(body.cover)
-  if (avatar === null || cover === null) return c.json({ ok: false, error: '头像和封面仅支持 HTTPS 或本站上传地址' }, 400)
+  if (avatar === null || cover === null)
+    return c.json({ ok: false, error: '头像和封面仅支持 HTTPS 或本站上传地址' }, 400)
   const intro = typeof body.intro === 'string' ? body.intro.trim().slice(0, 1000) : ''
-  await c.env.DB.prepare('UPDATE users SET avatar_override = ?, intro = ?, cover = ?, updated_at = ? WHERE sub = ?')
+  await c.env.DB.prepare(
+    'UPDATE users SET avatar_override = ?, intro = ?, cover = ?, updated_at = ? WHERE sub = ?',
+  )
     .bind(avatar, intro, cover, new Date().toISOString(), user.sub)
     .run()
   return c.json({ ok: true, profile: { avatar, intro, cover } })
