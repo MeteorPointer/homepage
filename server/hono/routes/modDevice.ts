@@ -17,7 +17,6 @@ import {
   hardRateLimit,
   hashSecret,
   issueDeviceLicense,
-  issueLegacyLicense,
   newDeviceCode,
   newUserCode,
   normalizeUserCode,
@@ -682,63 +681,10 @@ r.post('/devices/revoke', requireAuth(), async (c) => {
 
 r.post('/validate', async (c) => {
   noStore(c)
-  const body = await c.req
-    .json<{ token?: string; fingerprint?: string; device_name?: string }>()
-    .catch((): { token?: string; fingerprint?: string; device_name?: string } => ({}))
-  const token = String(body.token ?? '').trim()
-  const fingerprint = String(body.fingerprint ?? '').trim()
-  if (!token || !fingerprint) return c.json(invalid('BAD_REQUEST', '缺少 token 或 fingerprint'))
-
-  const tokenHash = await hashSecret(token)
-  const limit = await rateLimit(c.env.KV, `mod:legacy:${tokenHash}`, 10, 60)
-  if (!limit.ok) return c.json(invalid('RATE_LIMITED', '请求过于频繁，请稍后再试'))
-
-  const row = await c.env.DB.prepare('SELECT * FROM mod_tokens WHERE token = ?')
-    .bind(token)
-    .first<LegacyTokenRow>()
-  if (!row) return c.json(invalid('TOKEN_NOT_FOUND', 'token 不存在'))
-  if (row.revoked_at) return c.json(invalid('TOKEN_REVOKED', '此令牌已作废，请重新绑定设备'))
-
-  const firstBind = !row.bound_fingerprint
-  const now = nowIso()
-  if (firstBind) {
-    const bound = await c.env.DB.prepare(
-      `UPDATE mod_tokens
-          SET bound_fingerprint = ?, bound_at = ?, device_name = ?
-        WHERE token = ? AND bound_fingerprint IS NULL AND revoked_at IS NULL`,
-    )
-      .bind(fingerprint, now, String(body.device_name ?? '').slice(0, 64), token)
-      .run()
-    if (!bound.meta.changes) return c.json(invalid('DEVICE_MISMATCH', '此 token 已绑定其他设备'))
-  } else if (row.bound_fingerprint !== fingerprint) {
-    return c.json(invalid('DEVICE_MISMATCH', '此 token 已绑定其他设备'))
-  }
-
-  let user
-  try {
-    user = await freshSponsor(c.env, row.sub)
-  } catch (error) {
-    if (error instanceof RoleCheckUnavailableError) {
-      return c.json(invalid('ROLE_CHECK_UNAVAILABLE', error.message))
-    }
-    throw error
-  }
-  if (!user) return c.json(invalid('NOT_SPONSOR', '权限不足，需要赞助者身份'))
-
-  const result = await issueLegacyLicense(c.env, {
-    installId: fingerprint,
-    credentialVersion: 1,
-    user,
-  })
-  await c.env.DB.prepare('UPDATE mod_tokens SET last_seen_at = ? WHERE token = ?')
-    .bind(now, token)
-    .run()
-  return c.json({
-    valid: true,
-    username: user.display_name || user.username,
-    message: firstBind ? '首次激活成功' : '',
-    ...result,
-  })
+  return c.json(
+    invalid('CLIENT_UPGRADE_REQUIRED', '旧式长 token 验证已停用，请升级后使用绑定码授权'),
+    410,
+  )
 })
 
 r.get('/token', requireLevel(MOD_MIN_LEVEL), async (c) => {

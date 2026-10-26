@@ -23,6 +23,8 @@ const [
   buildMigration,
   modBuilds,
   buildsTab,
+  modAuth,
+  rateLimitMigration,
 ] = await Promise.all([
   read('.dev.vars.example'),
   read('server/hono/routes/workshop.ts'),
@@ -41,6 +43,8 @@ const [
   read('migrations/0008_official_mod_builds.sql'),
   read('server/hono/lib/modBuilds.ts'),
   read('app/components/admin/BuildsTab.vue'),
+  read('server/hono/lib/modAuth.ts'),
+  read('migrations/0009_mod_pair_rate_limit_expiry.sql'),
 ])
 
 assert(
@@ -126,12 +130,23 @@ assert(
   'pairing, polling, and refresh must reject unofficial builds',
 )
 assert(
-  license.includes('license_version: 2 | 3') && modDevice.includes('issueLegacyLicense'),
-  'v3 build-bound licenses must preserve the legacy v2 migration path',
+  license.includes('license_version: 3') &&
+    modDevice.includes('CLIENT_UPGRADE_REQUIRED') &&
+    !modDevice.includes('issueLegacyLicense'),
+  'only build-bound v3 licenses may be issued',
 )
 assert(
   buildsTab.includes('/api/admin/mod-builds'),
   'admin UI must manage the official build registry',
+)
+assert(
+  modAuth.includes('ON CONFLICT(key) DO UPDATE SET') && modAuth.includes('RETURNING hits'),
+  'pair confirmation hard rate limits must increment atomically',
+)
+assert(
+  rateLimitMigration.includes('idx_mod_pair_rate_limits_expiry') &&
+    modAuth.includes('SELECT key FROM mod_pair_rate_limits WHERE expires_at <= ? LIMIT 100'),
+  'expired hard rate-limit rows must be cleaned with an indexed bounded query',
 )
 
 console.log('contract checks passed')

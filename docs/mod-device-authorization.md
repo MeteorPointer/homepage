@@ -33,7 +33,7 @@
 
 JWT header：`alg=RS256`、`typ=JWT`、`kid=<MOD_LICENSE_KEY_ID>`。
 
-主要 claims：`iss`、`aud=nsuk-mod`、`sub`、`jti`、`iat`、`refresh_after`、`exp`、`mod_id=simukraft`、`license_version=2`、`install_id`、`credential_version`、`entitlements`、`tier`、`name`。
+主要 claims：`iss`、`aud=nsuk-mod`、`sub`、`jti`、`iat`、`refresh_after`、`exp`、`mod_id=simukraft`、`license_version=3`、`install_id`、`credential_version`、`build_id`、`artifact_sha256`、`minecraft_version`、`mod_version`、`entitlements`、`tier`、`name`。
 
 客户端必须校验签名、`kid`、issuer、audience、mod ID、安装 ID、时间字段和 License 版本。超过 `exp` 后不得继续接受。
 
@@ -50,6 +50,7 @@ JWT header：`alg=RS256`、`typ=JWT`、`kid=<MOD_LICENSE_KEY_ID>`。
 - 设备码创建和日常续期都提交当前 JAR 的 SHA-256、Minecraft 版本和模组版本。
 - 官网只给启用的官方构建签发 v3 License；License 同时绑定 `build_id` 和上述构建身份。
 - 直接修改、重新打包或使用未登记构建会得到 `unofficial_build`，但客户端自校验不能替代服务端功能权限边界。
+- 旧 `/validate` 只返回 `410 CLIENT_UPGRADE_REQUIRED`，不再签发缺少构建绑定的 v2 License。
 
 ## 存储边界
 

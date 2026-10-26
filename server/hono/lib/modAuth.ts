@@ -71,31 +71,34 @@ export async function hardRateLimit(
   windowSeconds: number,
 ): Promise<boolean> {
   const key = await sha256Base64Url(rawKey)
-  const now = Date.now()
-  const row = await db
-    .prepare('SELECT hits, expires_at FROM mod_pair_rate_limits WHERE key = ?')
-    .bind(key)
-    .first<{ hits: number; expires_at: string }>()
-
-  if (!row || new Date(row.expires_at).getTime() <= now) {
-    await db
-      .prepare(
-        `INSERT INTO mod_pair_rate_limits (key, hits, expires_at) VALUES (?, 1, ?)
-         ON CONFLICT(key) DO UPDATE SET hits = 1, expires_at = excluded.expires_at`,
-      )
-      .bind(key, new Date(now + windowSeconds * 1000).toISOString())
-      .run()
-    return true
-  }
-
-  const updated = await db
+  const now = nowIso()
+  const expiresAt = new Date(Date.now() + windowSeconds * 1000).toISOString()
+  await db
     .prepare(
-      `UPDATE mod_pair_rate_limits SET hits = hits + 1
-        WHERE key = ? AND hits < ? AND expires_at > ?`,
+      `DELETE FROM mod_pair_rate_limits
+        WHERE key IN (
+          SELECT key FROM mod_pair_rate_limits WHERE expires_at <= ? LIMIT 100
+        )`,
     )
-    .bind(key, limit, nowIso())
+    .bind(now)
     .run()
-  return Number(updated.meta.changes ?? 0) > 0
+  const row = await db
+    .prepare(
+      `INSERT INTO mod_pair_rate_limits (key, hits, expires_at) VALUES (?, 1, ?)
+       ON CONFLICT(key) DO UPDATE SET
+         hits = CASE
+           WHEN mod_pair_rate_limits.expires_at <= ? THEN 1
+           ELSE MIN(mod_pair_rate_limits.hits + 1, ?)
+         END,
+         expires_at = CASE
+           WHEN mod_pair_rate_limits.expires_at <= ? THEN excluded.expires_at
+           ELSE mod_pair_rate_limits.expires_at
+         END
+       RETURNING hits`,
+    )
+    .bind(key, expiresAt, now, limit + 1, now)
+    .first<{ hits: number }>()
+  return Number(row?.hits ?? limit + 1) <= limit
 }
 
 async function sponsorRow(env: Env, sub: string): Promise<SponsorRow | null> {
@@ -163,39 +166,6 @@ export async function issueDeviceLicense(env: Env, input: DeviceLicenseInput) {
     name: input.user.display_name || input.user.username,
   }
 
-  return {
-    license: await signLicense(env, claims),
-    license_key: await licensePublicKey(env),
-    refresh_after: refreshAfter,
-    expires_at: exp,
-    tier: claims.tier,
-    entitlements: claims.entitlements,
-  }
-}
-
-/** 仅供旧 /validate 客户端迁移；新设备码链路始终签发构建绑定的 v3 License。 */
-export async function issueLegacyLicense(env: Env, input: Omit<DeviceLicenseInput, 'build'>) {
-  const refreshHours = await getConfig<number>(env.DB, 'license_ttl_hours', 24)
-  const graceDays = await getConfig<number>(env.DB, 'offline_grace_days', 3)
-  const iat = Math.floor(Date.now() / 1000)
-  const refreshAfter = iat + Math.max(1, refreshHours) * 3600
-  const exp = refreshAfter + Math.max(0, graceDays) * 24 * 3600
-  const claims: LicenseClaims = {
-    iss: (env.SITE_URL || 'http://localhost:3000').replace(/\/+$/, ''),
-    aud: 'nsuk-mod',
-    sub: input.user.sub,
-    jti: crypto.randomUUID(),
-    iat,
-    refresh_after: refreshAfter,
-    exp,
-    mod_id: MOD_ID,
-    license_version: 2,
-    install_id: input.installId,
-    credential_version: input.credentialVersion,
-    entitlements: ['sponsor'],
-    tier: input.user.role_key,
-    name: input.user.display_name || input.user.username,
-  }
   return {
     license: await signLicense(env, claims),
     license_key: await licensePublicKey(env),
