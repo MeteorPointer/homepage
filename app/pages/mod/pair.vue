@@ -5,6 +5,8 @@ interface PairInfo {
   user_code: string
   device_name: string
   minecraft_name: string
+  minecraft_version: string
+  mod_version: string
   status: 'pending' | 'approved' | 'denied' | 'consumed' | 'expired'
   expires_at: string
 }
@@ -102,6 +104,8 @@ onMounted(() => {
         <dd>{{ info.device_name }}</dd>
         <dt class="text-(--ui-text-muted)">Minecraft 账号</dt>
         <dd>{{ info.minecraft_name || '未提供' }}</dd>
+        <dt class="text-(--ui-text-muted)">官方构建</dt>
+        <dd>MC {{ info.minecraft_version }} · {{ info.mod_version }}</dd>
         <dt class="text-(--ui-text-muted)">过期时间</dt>
         <dd>{{ fmt(info.expires_at) }}</dd>
       </dl>

@@ -502,6 +502,124 @@ r.put('/config/:key', requireCap(CAPS.SITE_CONFIGURE), async (c) => {
 })
 
 // ─────────────────────────────────────────────────────────────
+// 官方赞助版构建
+// ─────────────────────────────────────────────────────────────
+
+function readBuildVersion(value: unknown, max: number): string {
+  const text = readText(value, max)
+  return text && /^[0-9A-Za-z._+-]+$/.test(text) ? text : ''
+}
+
+r.get('/mod-builds', requireCap(CAPS.SITE_CONFIGURE), async (c) => {
+  const { results } = await c.env.DB.prepare(
+    `SELECT id, mod_id, minecraft_version, mod_version, artifact_sha256,
+            enabled, notes, created_by, created_at, updated_at
+       FROM official_mod_builds
+      ORDER BY created_at DESC`,
+  ).all<{
+    id: string
+    mod_id: string
+    minecraft_version: string
+    mod_version: string
+    artifact_sha256: string
+    enabled: number
+    notes: string
+    created_by: string | null
+    created_at: string
+    updated_at: string
+  }>()
+  return c.json({
+    ok: true,
+    builds: results.map((build) => ({
+      id: build.id,
+      modId: build.mod_id,
+      minecraftVersion: build.minecraft_version,
+      modVersion: build.mod_version,
+      artifactSha256: build.artifact_sha256.toLowerCase(),
+      enabled: !!build.enabled,
+      notes: build.notes,
+      createdBy: build.created_by,
+      createdAt: build.created_at,
+      updatedAt: build.updated_at,
+    })),
+  })
+})
+
+r.post('/mod-builds', requireCap(CAPS.SITE_CONFIGURE), async (c) => {
+  const user = c.get('user')!
+  const body = await c.req
+    .json<{
+      minecraftVersion?: unknown
+      modVersion?: unknown
+      artifactSha256?: unknown
+      notes?: unknown
+    }>()
+    .catch(
+      (): {
+        minecraftVersion?: unknown
+        modVersion?: unknown
+        artifactSha256?: unknown
+        notes?: unknown
+      } => ({}),
+    )
+  const minecraftVersion = readBuildVersion(body.minecraftVersion, 32)
+  const modVersion = readBuildVersion(body.modVersion, 80)
+  const artifactSha256 = readText(body.artifactSha256, 64).toLowerCase()
+  const notes = readText(body.notes, 500)
+  if (!minecraftVersion || !modVersion || !/^[0-9a-f]{64}$/.test(artifactSha256)) {
+    return c.json({ ok: false, error: 'Minecraft 版本、模组版本或 SHA-256 格式无效' }, 400)
+  }
+
+  const id = `simukraft-${minecraftVersion}-${modVersion}-${artifactSha256.slice(0, 12)}`
+    .toLowerCase()
+    .replace(/[^0-9a-z._-]+/g, '-')
+  const now = nowIso()
+  const inserted = await c.env.DB.prepare(
+    `INSERT OR IGNORE INTO official_mod_builds
+      (id, mod_id, minecraft_version, mod_version, artifact_sha256,
+       enabled, notes, created_by, created_at, updated_at)
+     VALUES (?, 'simukraft', ?, ?, ?, 1, ?, ?, ?, ?)`,
+  )
+    .bind(id, minecraftVersion, modVersion, artifactSha256, notes, user.sub, now, now)
+    .run()
+  if (!inserted.meta.changes) {
+    return c.json({ ok: false, error: '该构建编号或 SHA-256 已登记' }, 409)
+  }
+  await recordAudit(c.env.DB, {
+    actor: user.sub,
+    action: AUDIT.MOD_BUILD_REGISTER,
+    target: id,
+    detail: { minecraftVersion, modVersion, artifactSha256, notes },
+  })
+  return c.json({ ok: true, id }, 201)
+})
+
+r.put('/mod-builds/:id', requireCap(CAPS.SITE_CONFIGURE), async (c) => {
+  const user = c.get('user')!
+  const id = readText(c.req.param('id'), 160)
+  const body = await c.req
+    .json<{ enabled?: unknown; notes?: unknown }>()
+    .catch((): { enabled?: unknown; notes?: unknown } => ({}))
+  if (!id || typeof body.enabled !== 'boolean') {
+    return c.json({ ok: false, error: '缺少构建编号或 enabled' }, 400)
+  }
+  const notes = readText(body.notes, 500)
+  const updated = await c.env.DB.prepare(
+    'UPDATE official_mod_builds SET enabled = ?, notes = ?, updated_at = ? WHERE id = ?',
+  )
+    .bind(body.enabled ? 1 : 0, notes, nowIso(), id)
+    .run()
+  if (!updated.meta.changes) return c.json({ ok: false, error: '构建不存在' }, 404)
+  await recordAudit(c.env.DB, {
+    actor: user.sub,
+    action: AUDIT.MOD_BUILD_UPDATE,
+    target: id,
+    detail: { enabled: body.enabled, notes },
+  })
+  return c.json({ ok: true })
+})
+
+// ─────────────────────────────────────────────────────────────
 // 审计与用户（只读）
 // ─────────────────────────────────────────────────────────────
 

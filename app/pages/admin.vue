@@ -15,6 +15,7 @@ const allTabs = [
   { key: 'developers', label: '开发者资料', cap: 'developers.manage' },
   { key: 'changelog', label: '更新日志', cap: 'changelog.manage' },
   { key: 'config', label: '站点设置', cap: 'site.configure' },
+  { key: 'builds', label: '官方构建', cap: 'site.configure' },
   { key: 'users', label: '用户', cap: 'audit.view' },
   { key: 'audit', label: '审计', cap: 'audit.view' },
 ]
@@ -83,6 +84,7 @@ const active = ref(tabs.value[0]?.key ?? '')
         <AdminDevelopersTab v-else-if="active === 'developers'" />
         <AdminChangelogTab v-else-if="active === 'changelog'" />
         <AdminConfigTab v-else-if="active === 'config'" />
+        <AdminBuildsTab v-else-if="active === 'builds'" />
         <AdminUsersTab v-else-if="active === 'users'" />
         <AdminAuditTab v-else-if="active === 'audit'" />
       </div>

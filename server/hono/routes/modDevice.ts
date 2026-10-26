@@ -17,12 +17,14 @@ import {
   hardRateLimit,
   hashSecret,
   issueDeviceLicense,
+  issueLegacyLicense,
   newDeviceCode,
   newUserCode,
   normalizeUserCode,
   validCredentialHash,
   validInstallId,
 } from '../lib/modAuth'
+import { findOfficialModBuild, parseModBuildIdentity } from '../lib/modBuilds'
 
 const r = new Hono<AppBindings>()
 
@@ -34,6 +36,10 @@ interface PairingRow {
   install_id: string
   device_name: string
   minecraft_name: string
+  build_id: string
+  artifact_sha256: string
+  minecraft_version: string
+  mod_version: string
   status: 'pending' | 'approved' | 'denied' | 'consumed' | 'expired'
   confirmed_sub: string | null
   created_at: string
@@ -49,6 +55,10 @@ interface DeviceRow {
   install_id: string
   device_name: string
   minecraft_name: string
+  build_id: string
+  artifact_sha256: string
+  minecraft_version: string
+  mod_version: string
   credential_version: number
   bound_at: string
   last_seen_at: string | null
@@ -141,6 +151,9 @@ r.post('/pair/start', async (c) => {
       device_name?: string
       minecraft_name?: string
       credential_hash?: string
+      minecraft_version?: string
+      mod_version?: string
+      artifact_sha256?: string
     }>()
     .catch(
       (): {
@@ -149,10 +162,14 @@ r.post('/pair/start', async (c) => {
         device_name?: string
         minecraft_name?: string
         credential_hash?: string
+        minecraft_version?: string
+        mod_version?: string
+        artifact_sha256?: string
       } => ({}),
     )
   const installId = String(body.install_id ?? '').trim()
   const credentialHash = String(body.credential_hash ?? '').trim()
+  const buildIdentity = parseModBuildIdentity(body)
   const deviceName = String(body.device_name ?? 'Minecraft 客户端')
     .trim()
     .slice(0, 64)
@@ -166,11 +183,7 @@ r.post('/pair/start', async (c) => {
     .trim()
     .slice(0, 64)
 
-  if (
-    body.mod_id !== MOD_ID ||
-    !validInstallId(installId) ||
-    !validCredentialHash(credentialHash)
-  ) {
+  if (!buildIdentity || !validInstallId(installId) || !validCredentialHash(credentialHash)) {
     return c.json({ error: 'invalid_request', error_description: '设备配对参数不合法' }, 400)
   }
 
@@ -181,6 +194,14 @@ r.post('/pair/start', async (c) => {
   ])
   if (!ipLimit.ok || !deviceLimit.ok) {
     return c.json({ error: 'slow_down', error_description: '请求过于频繁，请稍后重试' }, 429)
+  }
+
+  const build = await findOfficialModBuild(c.env, buildIdentity)
+  if (!build) {
+    return c.json(
+      { error: 'unofficial_build', error_description: '当前模组不是官网登记的官方赞助版构建' },
+      403,
+    )
   }
 
   const ttl = await getConfig<number>(c.env.DB, 'pairing_ttl_seconds', 600)
@@ -203,8 +224,9 @@ r.post('/pair/start', async (c) => {
     const inserted = await c.env.DB.prepare(
       `INSERT OR IGNORE INTO mod_pairings
         (id, device_code_hash, user_code, credential_hash, install_id, device_name,
-         minecraft_name, status, created_at, expires_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
+         minecraft_name, build_id, artifact_sha256, minecraft_version, mod_version,
+         status, created_at, expires_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
     )
       .bind(
         id,
@@ -214,6 +236,10 @@ r.post('/pair/start', async (c) => {
         installId,
         deviceName,
         minecraftName,
+        build.buildId,
+        build.artifactSha256,
+        build.minecraftVersion,
+        build.modVersion,
         createdAt,
         expiresAt,
       )
@@ -248,6 +274,9 @@ r.post('/pair/info', async (c) => {
     user_code: row.user_code,
     device_name: row.device_name,
     minecraft_name: row.minecraft_name,
+    build_id: row.build_id,
+    minecraft_version: row.minecraft_version,
+    mod_version: row.mod_version,
     status: pairingExpired(row) ? 'expired' : row.status,
     expires_at: row.expires_at,
   })
@@ -363,6 +392,19 @@ r.post('/pair/poll', async (c) => {
   if (!user)
     return c.json({ error: 'access_denied', error_description: '当前账号没有赞助资格' }, 403)
 
+  const build = await findOfficialModBuild(c.env, {
+    modId: MOD_ID,
+    minecraftVersion: row.minecraft_version,
+    modVersion: row.mod_version,
+    artifactSha256: row.artifact_sha256,
+  })
+  if (!build || build.buildId !== row.build_id) {
+    return c.json(
+      { error: 'unofficial_build', error_description: '此构建已停用或不再属于官方赞助版' },
+      403,
+    )
+  }
+
   const now = nowIso()
   const hours = await cooldownHours(c.env.DB)
   const cooldownExempt = isRebindCooldownExempt(user.role_key)
@@ -372,13 +414,18 @@ r.post('/pair/poll', async (c) => {
     bound = await c.env.DB.prepare(
       `INSERT INTO mod_devices
         (id, sub, credential_hash, install_id, device_name, minecraft_name, credential_version,
+         build_id, artifact_sha256, minecraft_version, mod_version,
          bound_at, last_seen_at, revoked_at, revoke_reason)
-       VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, NULL, NULL)
+       VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, NULL, NULL)
        ON CONFLICT(sub) DO UPDATE SET
          credential_hash = excluded.credential_hash,
          install_id = excluded.install_id,
          device_name = excluded.device_name,
          minecraft_name = excluded.minecraft_name,
+         build_id = excluded.build_id,
+         artifact_sha256 = excluded.artifact_sha256,
+         minecraft_version = excluded.minecraft_version,
+         mod_version = excluded.mod_version,
          credential_version = CASE
            WHEN mod_devices.credential_hash = excluded.credential_hash
              THEN mod_devices.credential_version
@@ -404,6 +451,10 @@ r.post('/pair/poll', async (c) => {
         row.install_id,
         row.device_name,
         row.minecraft_name,
+        build.buildId,
+        build.artifactSha256,
+        build.minecraftVersion,
+        build.modVersion,
         now,
         now,
         cooldownExempt ? 1 : 0,
@@ -430,6 +481,7 @@ r.post('/pair/poll', async (c) => {
     installId: row.install_id,
     credentialVersion: Number(device.credential_version),
     user,
+    build,
   })
   await c.env.DB.prepare(
     `UPDATE mod_pairings
@@ -444,7 +496,12 @@ r.post('/pair/poll', async (c) => {
       actor: user.sub,
       action: AUDIT.MOD_DEVICE_BIND,
       target: row.install_id,
-      detail: { deviceName: row.device_name, minecraftName: row.minecraft_name },
+      detail: {
+        deviceName: row.device_name,
+        minecraftName: row.minecraft_name,
+        buildId: build.buildId,
+        artifactSha256: build.artifactSha256,
+      },
     })
   }
   return c.json({ ok: true, ...result })
@@ -455,15 +512,28 @@ r.post('/pair/poll', async (c) => {
 r.post('/license/refresh', async (c) => {
   noStore(c)
   const body = await c.req
-    .json<{ mod_id?: string; install_id?: string; device_token?: string }>()
-    .catch((): { mod_id?: string; install_id?: string; device_token?: string } => ({}))
+    .json<{
+      mod_id?: string
+      install_id?: string
+      device_token?: string
+      minecraft_version?: string
+      mod_version?: string
+      artifact_sha256?: string
+    }>()
+    .catch(
+      (): {
+        mod_id?: string
+        install_id?: string
+        device_token?: string
+        minecraft_version?: string
+        mod_version?: string
+        artifact_sha256?: string
+      } => ({}),
+    )
   const installId = String(body.install_id ?? '').trim()
   const deviceToken = String(body.device_token ?? '').trim()
-  if (
-    body.mod_id !== MOD_ID ||
-    !validInstallId(installId) ||
-    !/^[A-Za-z0-9_-]{43}$/.test(deviceToken)
-  ) {
+  const buildIdentity = parseModBuildIdentity(body)
+  if (!buildIdentity || !validInstallId(installId) || !/^[A-Za-z0-9_-]{43}$/.test(deviceToken)) {
     return c.json({ error: 'invalid_request' }, 400)
   }
 
@@ -474,6 +544,14 @@ r.post('/license/refresh', async (c) => {
     rateLimit(c.env.KV, `mod:refresh:credential:${credentialHash}`, 10, 60),
   ])
   if (!ipLimit.ok || !credentialLimit.ok) return c.json({ error: 'slow_down' }, 429)
+
+  const build = await findOfficialModBuild(c.env, buildIdentity)
+  if (!build) {
+    return c.json(
+      { error: 'unofficial_build', error_description: '当前模组不是官网登记的官方赞助版构建' },
+      403,
+    )
+  }
 
   const device = await c.env.DB.prepare('SELECT * FROM mod_devices WHERE credential_hash = ?')
     .bind(credentialHash)
@@ -498,8 +576,20 @@ r.post('/license/refresh', async (c) => {
     return c.json({ error: 'access_denied', error_description: '当前账号没有赞助资格' }, 403)
 
   const now = nowIso()
-  await c.env.DB.prepare('UPDATE mod_devices SET last_seen_at = ? WHERE id = ?')
-    .bind(now, device.id)
+  await c.env.DB.prepare(
+    `UPDATE mod_devices
+        SET last_seen_at = ?, build_id = ?, artifact_sha256 = ?,
+            minecraft_version = ?, mod_version = ?
+      WHERE id = ?`,
+  )
+    .bind(
+      now,
+      build.buildId,
+      build.artifactSha256,
+      build.minecraftVersion,
+      build.modVersion,
+      device.id,
+    )
     .run()
   return c.json({
     ok: true,
@@ -507,6 +597,7 @@ r.post('/license/refresh', async (c) => {
       installId,
       credentialVersion: Number(device.credential_version),
       user,
+      build,
     })),
   })
 })
@@ -517,7 +608,8 @@ r.get('/devices', requireAuth(), async (c) => {
   noStore(c)
   const user = c.get('user')!
   const device = await c.env.DB.prepare(
-    `SELECT id, install_id, device_name, minecraft_name, credential_version, bound_at,
+    `SELECT id, install_id, device_name, minecraft_name, credential_version,
+            build_id, artifact_sha256, minecraft_version, mod_version, bound_at,
             last_seen_at, revoked_at, revoke_reason
        FROM mod_devices WHERE sub = ?`,
   )
@@ -540,6 +632,10 @@ r.get('/devices', requireAuth(), async (c) => {
           deviceName: device.device_name,
           minecraftName: device.minecraft_name,
           credentialVersion: device.credential_version,
+          buildId: device.build_id,
+          artifactSha256: device.artifact_sha256,
+          minecraftVersion: device.minecraft_version,
+          modVersion: device.mod_version,
           boundAt: device.bound_at,
           lastSeenAt: device.last_seen_at,
           revokedAt: device.revoked_at,
@@ -629,7 +725,7 @@ r.post('/validate', async (c) => {
   }
   if (!user) return c.json(invalid('NOT_SPONSOR', '权限不足，需要赞助者身份'))
 
-  const result = await issueDeviceLicense(c.env, {
+  const result = await issueLegacyLicense(c.env, {
     installId: fingerprint,
     credentialVersion: 1,
     user,

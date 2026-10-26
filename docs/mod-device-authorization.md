@@ -44,6 +44,13 @@ JWT header：`alg=RS256`、`typ=JWT`、`kid=<MOD_LICENSE_KEY_ID>`。
 - 纯离线 License 无法被远程瞬时删除；联网收到明确拒绝时立即降级，否则最迟在 `exp` 失效。
 - Prism 降级会吊销 `mod_devices` 凭证并提高 `credential_version`。
 
+## 官方构建完整性
+
+- 最终赞助版 JAR 构建完成后计算 SHA-256，并由管理员登记到 `official_mod_builds`。
+- 设备码创建和日常续期都提交当前 JAR 的 SHA-256、Minecraft 版本和模组版本。
+- 官网只给启用的官方构建签发 v3 License；License 同时绑定 `build_id` 和上述构建身份。
+- 直接修改、重新打包或使用未登记构建会得到 `unofficial_build`，但客户端自校验不能替代服务端功能权限边界。
+
 ## 存储边界
 
 - D1：配对状态、设备凭证哈希、硬确认次数与授权版本。

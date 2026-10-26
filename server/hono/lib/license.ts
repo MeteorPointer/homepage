@@ -16,9 +16,14 @@ export interface LicenseClaims {
   /** 包含离线宽限的绝对硬截止时间 */
   exp: number
   mod_id: 'simukraft'
-  license_version: 2
+  license_version: 2 | 3
   install_id: string
   credential_version: number
+  /** v3：License 与官网登记的最终 JAR 构建绑定。 */
+  build_id?: string
+  artifact_sha256?: string
+  minecraft_version?: string
+  mod_version?: string
   entitlements: string[]
   tier: string
   name: string

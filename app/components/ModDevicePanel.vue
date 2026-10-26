@@ -5,6 +5,10 @@ interface ModDevice {
   deviceName: string
   minecraftName: string
   credentialVersion: number
+  buildId: string
+  artifactSha256: string
+  minecraftVersion: string
+  modVersion: string
   boundAt: string
   lastSeenAt: string | null
   revokedAt: string | null
@@ -103,6 +107,10 @@ async function revokeLegacy() {
         <dd class="truncate font-mono text-xs">{{ device.installId }}</dd>
         <dt>Minecraft 账号</dt>
         <dd>{{ device.minecraftName || '未提供' }}</dd>
+        <dt>官方构建</dt>
+        <dd>
+          {{ device.buildId ? `MC ${device.minecraftVersion} · ${device.modVersion}` : '旧客户端' }}
+        </dd>
         <dt>绑定时间</dt>
         <dd>{{ fmt(device.boundAt) }}</dd>
         <dt>最近续期</dt>

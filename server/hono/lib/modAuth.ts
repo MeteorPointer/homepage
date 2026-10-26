@@ -4,6 +4,7 @@ import { randomToken, sha256Base64Url } from './crypto'
 import { licensePublicKey, signLicense, type LicenseClaims } from './license'
 import { applyRole, verifyCurrentRole } from './prismSync'
 import { MOD_MIN_LEVEL } from './roles'
+import type { OfficialModBuild } from './modBuilds'
 
 export const MOD_ID = 'simukraft' as const
 export const DEVICE_CODE_BYTES = 32
@@ -22,6 +23,7 @@ export interface DeviceLicenseInput {
   installId: string
   credentialVersion: number
   user: SponsorRow
+  build: OfficialModBuild
 }
 
 export class RoleCheckUnavailableError extends Error {
@@ -149,6 +151,44 @@ export async function issueDeviceLicense(env: Env, input: DeviceLicenseInput) {
     refresh_after: refreshAfter,
     exp,
     mod_id: MOD_ID,
+    license_version: 3,
+    install_id: input.installId,
+    credential_version: input.credentialVersion,
+    build_id: input.build.buildId,
+    artifact_sha256: input.build.artifactSha256,
+    minecraft_version: input.build.minecraftVersion,
+    mod_version: input.build.modVersion,
+    entitlements: ['sponsor'],
+    tier: input.user.role_key,
+    name: input.user.display_name || input.user.username,
+  }
+
+  return {
+    license: await signLicense(env, claims),
+    license_key: await licensePublicKey(env),
+    refresh_after: refreshAfter,
+    expires_at: exp,
+    tier: claims.tier,
+    entitlements: claims.entitlements,
+  }
+}
+
+/** 仅供旧 /validate 客户端迁移；新设备码链路始终签发构建绑定的 v3 License。 */
+export async function issueLegacyLicense(env: Env, input: Omit<DeviceLicenseInput, 'build'>) {
+  const refreshHours = await getConfig<number>(env.DB, 'license_ttl_hours', 24)
+  const graceDays = await getConfig<number>(env.DB, 'offline_grace_days', 3)
+  const iat = Math.floor(Date.now() / 1000)
+  const refreshAfter = iat + Math.max(1, refreshHours) * 3600
+  const exp = refreshAfter + Math.max(0, graceDays) * 24 * 3600
+  const claims: LicenseClaims = {
+    iss: (env.SITE_URL || 'http://localhost:3000').replace(/\/+$/, ''),
+    aud: 'nsuk-mod',
+    sub: input.user.sub,
+    jti: crypto.randomUUID(),
+    iat,
+    refresh_after: refreshAfter,
+    exp,
+    mod_id: MOD_ID,
     license_version: 2,
     install_id: input.installId,
     credential_version: input.credentialVersion,
@@ -156,7 +196,6 @@ export async function issueDeviceLicense(env: Env, input: DeviceLicenseInput) {
     tier: input.user.role_key,
     name: input.user.display_name || input.user.username,
   }
-
   return {
     license: await signLicense(env, claims),
     license_key: await licensePublicKey(env),

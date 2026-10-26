@@ -40,6 +40,8 @@ export const AUDIT = {
   MOD_LICENSE_ISSUE: 'mod.license.issue',
   MOD_LICENSE_REVOKE: 'mod.license.revoke',
   MOD_DEVICE_ANOMALY: 'mod.device.anomaly',
+  MOD_BUILD_REGISTER: 'mod.build.register',
+  MOD_BUILD_UPDATE: 'mod.build.update',
   USER_ROLE_SYNC: 'user.role.sync',
   USER_DELETED: 'user.deleted',
   FEEDBACK_HANDLE: 'feedback.handle',
